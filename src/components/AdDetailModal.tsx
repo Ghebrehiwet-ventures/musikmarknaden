@@ -15,9 +15,9 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   const { data: details, isLoading } = useQuery({
-    queryKey: ['ad-details', ad?.ad_path],
-    queryFn: () => getAdDetails(ad!.ad_path),
-    enabled: !!ad?.ad_path && open,
+    queryKey: ['ad-details', ad?.ad_url],
+    queryFn: () => getAdDetails(ad!.ad_url),
+    enabled: !!ad?.ad_url && open,
   });
 
   const images = details?.images || (ad?.image_url ? [ad.image_url] : []);
