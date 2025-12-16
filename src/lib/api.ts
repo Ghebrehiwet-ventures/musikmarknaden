@@ -47,6 +47,6 @@ export async function fetchAdListings(category?: string, page: number = 1): Prom
   return callParsebotProxy<AdsResponse>('fetch_ad_listings', { category, page });
 }
 
-export async function getAdDetails(ad_path: string): Promise<AdDetails> {
-  return callParsebotProxy<AdDetails>('get_ad_details', { ad_path });
+export async function getAdDetails(ad_url: string): Promise<AdDetails> {
+  return callParsebotProxy<AdDetails>('get_ad_details', { ad_url });
 }
