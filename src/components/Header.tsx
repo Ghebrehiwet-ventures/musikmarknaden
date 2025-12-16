@@ -1,5 +1,6 @@
 import { Music, Search } from "lucide-react";
 import { Button } from "./ui/button";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Header() {
   return (
@@ -25,6 +26,7 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-3">
+          <ThemeToggle />
           <Button variant="ghost" size="icon">
             <Search className="h-5 w-5" />
           </Button>
