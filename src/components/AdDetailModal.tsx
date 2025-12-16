@@ -113,7 +113,7 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl bg-card border-border/50 p-0 overflow-hidden max-h-[90vh]">
+      <DialogContent className="max-w-4xl bg-card border-border/50 p-0 max-h-[90vh] overflow-y-auto overscroll-contain">
         <div className="md:grid md:grid-cols-[1.2fr_1fr]">
           {/* Image Gallery */}
           <div className="relative bg-secondary">
