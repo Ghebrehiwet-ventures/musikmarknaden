@@ -14,26 +14,59 @@ interface AdDetailModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function cleanDescription(input: string) {
+function cleanDescription(input: string, ad: Ad | null) {
   const lines = input
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
 
+  // Get values to filter out duplicates
+  const titleLower = ad?.title?.toLowerCase() || "";
+  const locationLower = ad?.location?.toLowerCase() || "";
+  const priceText = ad?.price_text?.replace(/\s/g, "") || "";
+
   const filtered = lines.filter((line) => {
+    const lineLower = line.toLowerCase();
+    const lineNoSpaces = line.replace(/\s/g, "");
+    
+    // Skip markdown images
     if (line.startsWith("![]") || line.startsWith("![") || line.startsWith("×!")) return false;
+    // Skip gearloop links
     if (line.startsWith("- [") && line.includes("gearloop.se")) return false;
-    if (line.toLowerCase().includes("sveriges marknadsplats")) return false;
-    if (line.toLowerCase().includes("om gearloop")) return false;
+    // Skip footer text
+    if (lineLower.includes("sveriges marknadsplats")) return false;
+    if (lineLower.includes("om gearloop")) return false;
+    // Skip status words
     if (/^(säljes|köpes)$/i.test(line)) return false;
+    // Skip timestamps
     if (/^\d{1,2}:\d{2}$/.test(line)) return false;
-    if (/^\d+\s*:-?$/.test(line)) return false;
+    // Skip standalone price
+    if (/^\d[\d\s]*:-?$/.test(line)) return false;
+    // Skip standalone × or x
+    if (/^[×x]$/i.test(line)) return false;
+    // Skip dates like "16 nov"
+    if (/^\d{1,2}\s+(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)$/i.test(line)) return false;
+    // Skip price history (price + date)
+    if (/^\d[\d\s]*kr\s*\d{1,2}\s*(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)/i.test(line)) return false;
+    // Skip condition line (shown separately)
+    if (/^Skick:/i.test(line)) return false;
+    // Skip member status
+    if (/^Ny medlem$/i.test(line)) return false;
+    // Skip if it's just the location
+    if (lineLower === locationLower) return false;
+    // Skip if it's just the price
+    if (lineNoSpaces === priceText || lineNoSpaces === priceText.replace("kr", "") + ":-") return false;
+    
     return true;
   });
 
+  // Remove markdown link syntax
   const withoutLinks = filtered.map((line) => line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1"));
+  
+  // Remove duplicate consecutive lines
+  const unique = withoutLinks.filter((line, i, arr) => i === 0 || line !== arr[i - 1]);
 
-  return withoutLinks.join("\n").trim();
+  return unique.join("\n").trim();
 }
 
 export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
@@ -66,7 +99,7 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
   const title = ad?.title ?? details?.title ?? "Annons";
   const priceText = ad?.price_text ?? details?.price_text ?? "Pris ej angivet";
   const location = ad?.location ?? details?.location ?? "";
-  const description = details?.description ? cleanDescription(details.description) : "";
+  const description = details?.description ? cleanDescription(details.description, ad) : "";
 
   const nextImage = () => {
     if (images.length === 0) return;
@@ -82,7 +115,7 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl bg-card border-border/50 p-0 overflow-hidden max-h-[90vh]">
         <div className="md:grid md:grid-cols-[1.2fr_1fr]">
-          {/* Media */}
+          {/* Image Gallery */}
           <div className="relative bg-secondary">
             <div className="aspect-square md:aspect-auto md:h-full min-h-[300px]">
               {images.length > 0 ? (
@@ -130,7 +163,6 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
               </>
             )}
 
-            {/* Image counter */}
             {images.length > 1 && (
               <div className="absolute top-4 right-4 bg-background/80 backdrop-blur rounded-full px-3 py-1 text-sm font-medium">
                 {currentImageIndex + 1} / {images.length}
@@ -138,117 +170,119 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
             )}
           </div>
 
-          {/* Details */}
-          <ScrollArea className="max-h-[90vh] md:max-h-none">
-            <div className="flex flex-col">
-              <div className="p-6 pb-4">
-                <DialogHeader>
-                  <DialogTitle className="text-xl md:text-2xl font-bold leading-tight pr-8">{title}</DialogTitle>
-                </DialogHeader>
+          {/* Details Panel */}
+          <div className="flex flex-col max-h-[90vh] md:max-h-[85vh]">
+            <div className="p-6 pb-4">
+              <DialogHeader>
+                <DialogTitle className="text-xl md:text-2xl font-bold leading-tight pr-8">{title}</DialogTitle>
+              </DialogHeader>
 
-                <p className="mt-4 text-3xl md:text-4xl font-bold text-primary">{priceText}</p>
+              <p className="mt-4 text-3xl md:text-4xl font-bold text-primary">{priceText}</p>
 
-                <div className="mt-3 flex flex-wrap items-center gap-3">
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                {location && (
                   <div className="flex items-center gap-1.5 text-muted-foreground">
                     <MapPin className="h-4 w-4" />
-                    <span>{location || "Plats ej angiven"}</span>
+                    <span>{location}</span>
                   </div>
-                  
-                  {details?.condition && (
-                    <Badge variant="secondary" className="gap-1">
-                      <CheckCircle className="h-3 w-3" />
-                      {details.condition}
-                    </Badge>
-                  )}
-                </div>
-
-                {ad?.category && (
-                  <Badge variant="outline" className="mt-3 bg-primary/10 text-primary border-primary/20">
-                    {ad.category}
+                )}
+                
+                {details?.condition && (
+                  <Badge variant="secondary" className="gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    {details.condition}
                   </Badge>
                 )}
               </div>
 
-              <div className="px-6 pb-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="font-semibold text-foreground">Beskrivning</h4>
-                  {isLoading && (
-                    <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      Hämtar…
-                    </span>
-                  )}
-                </div>
+              {ad?.category && (
+                <Badge variant="outline" className="mt-3 bg-primary/10 text-primary border-primary/20">
+                  {ad.category}
+                </Badge>
+              )}
+            </div>
 
-                {isLoading ? (
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-11/12" />
-                    <Skeleton className="h-4 w-10/12" />
-                    <Skeleton className="h-4 w-9/12" />
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap text-sm">
-                    {description || "Ingen beskrivning hittades."}
-                  </p>
+            {/* Description with scroll */}
+            <div className="px-6 pb-4 flex-1 min-h-0">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold text-foreground">Beskrivning</h4>
+                {isLoading && (
+                  <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Hämtar…
+                  </span>
                 )}
               </div>
 
-              {/* Seller info */}
-              {details?.seller && (details.seller.name || details.seller.username) && (
-                <div className="px-6 pb-4">
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-foreground">{details.seller.name}</p>
-                      {details.seller.username && (
-                        <p className="text-sm text-muted-foreground">@{details.seller.username}</p>
-                      )}
-                    </div>
+              {isLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-11/12" />
+                  <Skeleton className="h-4 w-10/12" />
+                  <Skeleton className="h-4 w-9/12" />
+                </div>
+              ) : (
+                <ScrollArea className="h-[150px] md:h-[200px]">
+                  <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap text-sm pr-4">
+                    {description || "Ingen beskrivning hittades."}
+                  </p>
+                </ScrollArea>
+              )}
+            </div>
+
+            {/* Seller info */}
+            {details?.seller && (details.seller.name || details.seller.username) && (
+              <div className="px-6 pb-4">
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
+                  <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <User className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">{details.seller.name}</p>
+                    {details.seller.username && (
+                      <p className="text-sm text-muted-foreground">@{details.seller.username}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Contact & Actions */}
+            <div className="p-6 pt-4 border-t border-border/50 mt-auto">
+              {details?.contact_info && (details.contact_info.email || details.contact_info.phone) && (
+                <div className="mb-4">
+                  <h4 className="font-semibold text-foreground mb-3 text-sm">Kontakta säljare</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {details.contact_info.email && (
+                      <Button variant="outline" size="sm" className="gap-2" asChild>
+                        <a href={`mailto:${details.contact_info.email}`}>
+                          <Mail className="h-4 w-4" />
+                          E-post
+                        </a>
+                      </Button>
+                    )}
+                    {details.contact_info.phone && (
+                      <Button variant="outline" size="sm" className="gap-2" asChild>
+                        <a href={`tel:${details.contact_info.phone}`}>
+                          <Phone className="h-4 w-4" />
+                          Ring
+                        </a>
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
 
-              {/* Contact & Actions */}
-              <div className="p-6 pt-4 border-t border-border/50 mt-auto">
-                {details?.contact_info && (details.contact_info.email || details.contact_info.phone) && (
-                  <div className="mb-4">
-                    <h4 className="font-semibold text-foreground mb-3 text-sm">Kontakta säljare</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {details.contact_info.email && (
-                        <Button variant="outline" size="sm" className="gap-2" asChild>
-                          <a href={`mailto:${details.contact_info.email}`}>
-                            <Mail className="h-4 w-4" />
-                            E-post
-                          </a>
-                        </Button>
-                      )}
-                      {details.contact_info.phone && (
-                        <Button variant="outline" size="sm" className="gap-2" asChild>
-                          <a href={`tel:${details.contact_info.phone}`}>
-                            <Phone className="h-4 w-4" />
-                            Ring
-                          </a>
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <Button className="w-full" size="lg" asChild>
-                  <a href={ad?.ad_url} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Visa på Gearloop
-                  </a>
-                </Button>
-              </div>
+              <Button className="w-full" size="lg" asChild>
+                <a href={ad?.ad_url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Visa på Gearloop
+                </a>
+              </Button>
             </div>
-          </ScrollArea>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
-

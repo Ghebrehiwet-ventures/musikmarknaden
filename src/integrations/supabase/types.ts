@@ -14,7 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      ad_details_cache: {
+        Row: {
+          ad_url: string
+          condition: string | null
+          contact_info: Json | null
+          created_at: string
+          description: string | null
+          id: string
+          images: Json | null
+          location: string | null
+          price_amount: number | null
+          price_text: string | null
+          seller: Json | null
+          title: string | null
+          updated_at: string
+        }
+        Insert: {
+          ad_url: string
+          condition?: string | null
+          contact_info?: Json | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          images?: Json | null
+          location?: string | null
+          price_amount?: number | null
+          price_text?: string | null
+          seller?: Json | null
+          title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ad_url?: string
+          condition?: string | null
+          contact_info?: Json | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          images?: Json | null
+          location?: string | null
+          price_amount?: number | null
+          price_text?: string | null
+          seller?: Json | null
+          title?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
