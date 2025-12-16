@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Ad, AdDetails, getAdDetails } from "@/lib/api";
-import { MapPin, Mail, Phone, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { MapPin, Mail, Phone, Loader2, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -15,14 +15,13 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   const { data: details, isLoading } = useQuery({
-    queryKey: ['ad-details', ad?.ad_id],
-    queryFn: () => getAdDetails(ad!.ad_id),
-    enabled: !!ad?.ad_id && open,
+    queryKey: ['ad-details', ad?.ad_path],
+    queryFn: () => getAdDetails(ad!.ad_path),
+    enabled: !!ad?.ad_path && open,
   });
 
-  const images = details?.images || [];
-  const hasMultipleImages = images.length > 1;
-
+  const images = details?.images || (ad?.image_url ? [ad.image_url] : []);
+  
   const nextImage = () => {
     setCurrentImageIndex((prev) => (prev + 1) % images.length);
   };
@@ -30,14 +29,6 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
   const prevImage = () => {
     setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
   };
-
-  // Fallback images for demo
-  const fallbackImages = [
-    `https://images.unsplash.com/photo-1510915361894-db8b60106cb1?w=800&h=600&fit=crop`,
-    `https://images.unsplash.com/photo-1598488035139-bdbb2231ce04?w=800&h=600&fit=crop`,
-  ];
-
-  const displayImages = images.length > 0 ? images : fallbackImages;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -50,13 +41,15 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
           <>
             {/* Image Gallery */}
             <div className="relative aspect-video bg-secondary">
-              <img
-                src={displayImages[currentImageIndex]}
-                alt={ad?.title}
-                className="w-full h-full object-cover"
-              />
+              {images.length > 0 && (
+                <img
+                  src={images[currentImageIndex]}
+                  alt={ad?.title}
+                  className="w-full h-full object-cover"
+                />
+              )}
               
-              {displayImages.length > 1 && (
+              {images.length > 1 && (
                 <>
                   <button
                     onClick={prevImage}
@@ -72,7 +65,7 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
                   </button>
                   
                   <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                    {displayImages.map((_, idx) => (
+                    {images.map((_, idx) => (
                       <button
                         key={idx}
                         onClick={() => setCurrentImageIndex(idx)}
@@ -95,46 +88,58 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
               </DialogHeader>
 
               <p className="mt-4 text-3xl font-bold text-primary">
-                {ad?.price}
+                {ad?.price_text || details?.price_text || "Pris ej angivet"}
               </p>
 
               <div className="mt-2 flex items-center gap-1.5 text-muted-foreground">
                 <MapPin className="h-4 w-4" />
-                <span>{ad?.location}</span>
+                <span>{ad?.location || details?.location}</span>
               </div>
 
+              {ad?.category && (
+                <span className="inline-block mt-2 bg-primary/10 text-primary text-sm px-3 py-1 rounded-md">
+                  {ad.category}
+                </span>
+              )}
+
               <div className="mt-6">
-                <h4 className="font-semibold text-foreground mb-2">Description</h4>
-                <p className="text-muted-foreground leading-relaxed">
-                  {details?.description || "Lightly used, excellent condition. Perfect for beginners and professionals alike. Includes original case and accessories."}
+                <h4 className="font-semibold text-foreground mb-2">Beskrivning</h4>
+                <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                  {details?.description || "Laddar beskrivning..."}
                 </p>
               </div>
 
               {/* Contact Info */}
-              <div className="mt-6 pt-6 border-t border-border">
-                <h4 className="font-semibold text-foreground mb-3">Contact Seller</h4>
-                <div className="flex flex-wrap gap-3">
-                  {(details?.contact_info?.email || true) && (
-                    <Button variant="outline" className="gap-2">
-                      <Mail className="h-4 w-4" />
-                      {details?.contact_info?.email || "seller@example.com"}
-                    </Button>
-                  )}
-                  {(details?.contact_info?.phone || true) && (
-                    <Button variant="outline" className="gap-2">
-                      <Phone className="h-4 w-4" />
-                      {details?.contact_info?.phone || "+46 70 123 4567"}
-                    </Button>
-                  )}
+              {details?.contact_info && (details.contact_info.email || details.contact_info.phone) && (
+                <div className="mt-6 pt-6 border-t border-border">
+                  <h4 className="font-semibold text-foreground mb-3">Kontakta säljare</h4>
+                  <div className="flex flex-wrap gap-3">
+                    {details.contact_info.email && (
+                      <Button variant="outline" className="gap-2" asChild>
+                        <a href={`mailto:${details.contact_info.email}`}>
+                          <Mail className="h-4 w-4" />
+                          {details.contact_info.email}
+                        </a>
+                      </Button>
+                    )}
+                    {details.contact_info.phone && (
+                      <Button variant="outline" className="gap-2" asChild>
+                        <a href={`tel:${details.contact_info.phone}`}>
+                          <Phone className="h-4 w-4" />
+                          {details.contact_info.phone}
+                        </a>
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="mt-6 flex gap-3">
-                <Button className="flex-1" size="lg">
-                  Contact Seller
-                </Button>
-                <Button variant="outline" size="lg">
-                  Save
+                <Button className="flex-1" size="lg" asChild>
+                  <a href={ad?.ad_url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Visa på Gearloop
+                  </a>
                 </Button>
               </div>
             </div>
