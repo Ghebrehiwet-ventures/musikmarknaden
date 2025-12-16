@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -18,6 +19,43 @@ serve(async (req) => {
         JSON.stringify({ error: 'ad_url is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Check cache first
+    const { data: cached } = await supabase
+      .from('ad_details_cache')
+      .select('*')
+      .eq('ad_url', ad_url)
+      .maybeSingle();
+
+    if (cached) {
+      const updatedAt = new Date(cached.updated_at);
+      const now = new Date();
+      const daysSinceUpdate = (now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60 * 24);
+      
+      // Return cached data if less than 7 days old
+      if (daysSinceUpdate < 7) {
+        console.log('Returning cached ad details for:', ad_url);
+        return new Response(
+          JSON.stringify({
+            title: cached.title,
+            description: cached.description,
+            price_text: cached.price_text,
+            price_amount: cached.price_amount,
+            location: cached.location,
+            images: cached.images || [],
+            contact_info: cached.contact_info || {},
+            seller: cached.seller,
+            condition: cached.condition,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     const apiKey = Deno.env.get('FIRECRAWL_API_KEY');
@@ -56,15 +94,36 @@ serve(async (req) => {
 
     console.log('Scrape successful, parsing ad details');
 
-    // Extract ad details from the scraped content
     const markdown = data.data?.markdown || data.markdown || '';
     const html = data.data?.html || data.html || '';
     const metadata = data.data?.metadata || data.metadata || {};
 
-    // Parse the scraped content to extract ad details
     const adDetails = parseGearloopAd(markdown, html, metadata);
 
     console.log('Parsed ad details:', adDetails);
+
+    // Save to cache
+    const { error: upsertError } = await supabase
+      .from('ad_details_cache')
+      .upsert({
+        ad_url,
+        title: adDetails.title,
+        description: adDetails.description,
+        price_text: adDetails.price_text,
+        price_amount: adDetails.price_amount,
+        location: adDetails.location,
+        images: adDetails.images,
+        contact_info: adDetails.contact_info,
+        seller: adDetails.seller,
+        condition: adDetails.condition,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'ad_url' });
+
+    if (upsertError) {
+      console.error('Failed to cache ad details:', upsertError);
+    } else {
+      console.log('Cached ad details for:', ad_url);
+    }
 
     return new Response(
       JSON.stringify(adDetails),
@@ -81,30 +140,18 @@ serve(async (req) => {
 });
 
 function parseGearloopAd(markdown: string, html: string, metadata: Record<string, unknown>) {
-  // Extract title from metadata or markdown
   const title = (metadata.title as string)?.split(' - ')[0] || extractTitle(markdown) || 'Okänd titel';
-  
-  // Extract description - get the main content from markdown
   const description = extractDescription(markdown);
   
-  // Extract price
+  // Extract price - get the first valid price
   const priceMatch = markdown.match(/(\d[\d\s]*):?-?\s*kr/i) || markdown.match(/(\d[\d\s]*)\s*kr/i);
   const priceText = priceMatch ? `${priceMatch[1].replace(/\s/g, '')} kr` : null;
   const priceAmount = priceMatch ? parseInt(priceMatch[1].replace(/\s/g, ''), 10) : null;
   
-  // Extract location
   const location = extractLocation(markdown);
-  
-  // Extract images from HTML - filter out avatars and icons
   const images = extractImages(html);
-  
-  // Extract contact info
   const contactInfo = extractContactInfo(markdown, html);
-
-  // Extract seller info
   const sellerInfo = extractSellerInfo(markdown);
-  
-  // Extract condition
   const condition = extractCondition(markdown);
 
   return {
@@ -131,12 +178,12 @@ function extractDescription(markdown: string): string {
   const lines = markdown.split('\n');
   const contentLines: string[] = [];
   
-  // Keywords that indicate we should skip lines
+  // Skip patterns - things we don't want in description
   const skipPatterns = [
-    /^!\[/,                           // Markdown images
-    /^\[.*\]\(.*gearloop/i,           // Links to gearloop
-    /^- \[/,                          // List items with links
-    /sveriges marknadsplats/i,        // Footer text
+    /^!\[/,                              // Markdown images
+    /^\[.*\]\(.*gearloop/i,              // Links to gearloop
+    /^- \[/,                             // List items with links
+    /sveriges marknadsplats/i,           // Footer text
     /om gearloop/i,
     /^support$/i,
     /^villkor$/i,
@@ -144,8 +191,17 @@ function extractDescription(markdown: string): string {
     /medlem sedan/i,
     /visningar:/i,
     /skickas \*\*ej\*\*/i,
-    /^\d{1,2}:\d{2}$/,                // Time stamps like 11:06
-    /^\d+\s*kr\d/,                    // Price with date attached
+    /^\d{1,2}:\d{2}$/,                   // Time stamps like 11:06
+    /^\d+\s*kr\d/,                       // Price with date attached like "1 750 kr9 dec"
+    /^\d[\d\s]*kr\d/i,                   // Price history patterns
+    /^×$/,                               // Standalone × character
+    /^x$/i,                              // Standalone x character
+    /^Säljes$/i,                         // Just "Säljes"
+    /^Köpes$/i,                          // Just "Köpes"
+    /^\d{1,2}\s+(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)$/i, // Date like "16 nov"
+    /^\d[\d\s]*:-?$/,                    // Just price like "1 400:-"
+    /^Skick:/i,                          // Condition line (shown separately)
+    /^Ny medlem$/i,                      // Member status
   ];
   
   for (const line of lines) {
@@ -159,17 +215,25 @@ function extractDescription(markdown: string): string {
     // Skip pure navigation/header elements
     if (trimmed.startsWith('#') || trimmed === '|' || trimmed.startsWith('---')) continue;
     
+    // Skip price history lines (price followed by date)
+    if (/^\d[\d\s]*kr\s*\d{1,2}\s*(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)/i.test(trimmed)) continue;
+    
     contentLines.push(trimmed);
   }
   
-  // Take the description part - usually after price/location info
   let desc = contentLines.join('\n').trim();
   
   // Clean up markdown artifacts
-  desc = desc.replace(/!\[\]\([^)]+\)/g, '');  // Remove empty markdown images
-  desc = desc.replace(/×!/g, '');               // Remove weird artifacts
-  desc = desc.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1'); // Convert links to text
-  desc = desc.replace(/\*\*/g, '');             // Remove bold markers
+  desc = desc.replace(/!\[\]\([^)]+\)/g, '');           // Remove empty markdown images
+  desc = desc.replace(/×!/g, '');                       // Remove weird artifacts
+  desc = desc.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');  // Convert links to text
+  desc = desc.replace(/\*\*/g, '');                     // Remove bold markers
+  desc = desc.replace(/^×\n/gm, '');                    // Remove standalone × on lines
+  desc = desc.replace(/\n×$/gm, '');                    // Remove trailing ×
+  
+  // Remove duplicate consecutive lines
+  const uniqueLines = desc.split('\n').filter((line, i, arr) => i === 0 || line !== arr[i - 1]);
+  desc = uniqueLines.join('\n');
   
   return desc || 'Ingen beskrivning tillgänglig';
 }
@@ -196,14 +260,11 @@ function extractLocation(markdown: string): string {
 
 function extractImages(html: string): string[] {
   const images: string[] = [];
-  
-  // Match asset URLs specifically
   const urlRegex = /https:\/\/assets\.gearloop\.se\/files\/\d+\.(?:jpg|jpeg|png|gif|webp)/gi;
   let match;
   
   while ((match = urlRegex.exec(html)) !== null) {
     const url = match[0];
-    // Skip duplicates
     if (!images.includes(url)) {
       images.push(url);
     }
@@ -230,15 +291,12 @@ function extractContactInfo(markdown: string, html: string): { email?: string; p
 
 function extractSellerInfo(markdown: string): { name?: string; username?: string } | undefined {
   const lines = markdown.split('\n');
-  let foundMember = false;
   let name: string | undefined;
   let username: string | undefined;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (line.toLowerCase().includes('medlem sedan')) {
-      foundMember = true;
-      // Look backwards for name/username
       if (i >= 2) {
         username = lines[i - 1]?.trim();
         name = lines[i - 2]?.trim();
@@ -246,6 +304,10 @@ function extractSellerInfo(markdown: string): { name?: string; username?: string
       break;
     }
   }
+  
+  // Clean up seller info - remove if it's just artifacts
+  if (name && /^[×x]$/i.test(name)) name = undefined;
+  if (username && /^[×x]$/i.test(username)) username = undefined;
   
   if (name || username) {
     return { name, username };
