@@ -2,3 +2,6 @@ project_id = "vjifxhyypuporrbqgibt"
 
 [functions.parsebot-proxy]
 verify_jwt = false
+
+[functions.firecrawl-ad-details]
+verify_jwt = false
