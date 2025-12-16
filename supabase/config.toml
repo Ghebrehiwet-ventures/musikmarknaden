@@ -1,1 +1,4 @@
 project_id = "vjifxhyypuporrbqgibt"
+
+[functions.parsebot-proxy]
+verify_jwt = false

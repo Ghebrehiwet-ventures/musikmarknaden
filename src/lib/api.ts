@@ -1,4 +1,4 @@
-const API_BASE = "https://api.parse.bot/scraper/0f1f1694-68f5-4a07-8498-3b2e8a026a74";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface Ad {
   ad_id: string;
@@ -23,34 +23,22 @@ export interface AdsResponse {
   total_ads: number;
 }
 
-export async function fetchAdListings(category?: string, page: number = 1): Promise<AdsResponse> {
-  const response = await fetch(`${API_BASE}/fetch_ad_listings`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ category, page }),
+async function callParsebotProxy<T>(endpoint: string, payload: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke('parsebot-proxy', {
+    body: { endpoint, payload },
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to fetch ad listings");
+  if (error) {
+    throw new Error(error.message || 'Failed to call parsebot proxy');
   }
 
-  return response.json();
+  return data as T;
+}
+
+export async function fetchAdListings(category?: string, page: number = 1): Promise<AdsResponse> {
+  return callParsebotProxy<AdsResponse>('fetch_ad_listings', { category, page });
 }
 
 export async function getAdDetails(ad_id: string): Promise<AdDetails> {
-  const response = await fetch(`${API_BASE}/get_ad_details`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ ad_id }),
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to fetch ad details");
-  }
-
-  return response.json();
+  return callParsebotProxy<AdDetails>('get_ad_details', { ad_id });
 }
