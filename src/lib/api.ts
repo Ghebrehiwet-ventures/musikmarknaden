@@ -48,5 +48,14 @@ export async function fetchAdListings(category?: string, page: number = 1): Prom
 }
 
 export async function getAdDetails(ad_url: string): Promise<AdDetails> {
-  return callParsebotProxy<AdDetails>('get_ad_details', { ad_url });
+  // Use Firecrawl to scrape ad details directly from Gearloop
+  const { data, error } = await supabase.functions.invoke('firecrawl-ad-details', {
+    body: { ad_url },
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Failed to get ad details');
+  }
+
+  return data as AdDetails;
 }
