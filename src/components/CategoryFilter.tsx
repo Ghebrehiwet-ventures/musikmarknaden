@@ -7,13 +7,15 @@ interface CategoryFilterProps {
   onCategoryChange: (category: string | null) => void;
 }
 
+// TODO: Categories currently disabled - parse.bot scraper only supports one category
+// Re-enable when scraper is configured for multiple categories
 const categories = [
   { id: null, label: "All", icon: Music2 },
-  { id: "guitars", label: "Guitars", icon: Guitar },
-  { id: "drums", label: "Drums", icon: Drum },
-  { id: "keyboards", label: "Keys", icon: Piano },
-  { id: "microphones", label: "Mics", icon: Mic2 },
-  { id: "amplifiers", label: "Amps", icon: Speaker },
+  // { id: "guitars", label: "Guitars", icon: Guitar },
+  // { id: "drums", label: "Drums", icon: Drum },
+  // { id: "keyboards", label: "Keys", icon: Piano },
+  // { id: "microphones", label: "Mics", icon: Mic2 },
+  // { id: "amplifiers", label: "Amps", icon: Speaker },
 ];
 
 export function CategoryFilter({ selectedCategory, onCategoryChange }: CategoryFilterProps) {
