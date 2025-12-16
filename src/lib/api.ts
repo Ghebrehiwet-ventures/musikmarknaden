@@ -23,6 +23,11 @@ export interface AdDetails {
     email?: string;
     phone?: string;
   };
+  seller?: {
+    name?: string;
+    username?: string;
+  };
+  condition?: string;
 }
 
 export interface AdsResponse {
@@ -44,7 +49,12 @@ async function callParsebotProxy<T>(endpoint: string, payload: Record<string, un
 }
 
 export async function fetchAdListings(category?: string, page: number = 1): Promise<AdsResponse> {
-  return callParsebotProxy<AdsResponse>('fetch_ad_listings', { category, page });
+  // Only include category if it's defined - parse.bot has issues with undefined values
+  const payload: Record<string, unknown> = { page };
+  if (category) {
+    payload.category = category;
+  }
+  return callParsebotProxy<AdsResponse>('fetch_ad_listings', payload);
 }
 
 export async function getAdDetails(ad_url: string): Promise<AdDetails> {

@@ -19,11 +19,9 @@ export default function Index() {
     queryKey: ['ads', selectedCategory, currentPage],
     queryFn: () => fetchAdListings(selectedCategory ?? undefined, currentPage),
     retry: 1,
-    staleTime: 24 * 60 * 60 * 1000, // 24 hours
-    gcTime: 24 * 60 * 60 * 1000,
+    staleTime: 5 * 60 * 1000, // 5 min for dev, increase later
+    gcTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
-    refetchOnMount: false,
-    refetchOnReconnect: false,
   });
 
   const ads = data?.ads || [];
