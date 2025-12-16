@@ -1,4 +1,4 @@
-import { MapPin } from "lucide-react";
+import { MapPin, Calendar } from "lucide-react";
 import { Ad } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -9,10 +9,6 @@ interface AdCardProps {
 }
 
 export function AdCard({ ad, onClick, index }: AdCardProps) {
-  // Generate a placeholder image based on ad_id for variety
-  const imageIndex = parseInt(ad.ad_id) % 6 + 1;
-  const placeholderImage = `https://images.unsplash.com/photo-${getImageId(imageIndex)}?w=400&h=300&fit=crop`;
-
   return (
     <article 
       onClick={onClick}
@@ -24,12 +20,17 @@ export function AdCard({ ad, onClick, index }: AdCardProps) {
     >
       <div className="aspect-[4/3] relative overflow-hidden bg-secondary">
         <img 
-          src={placeholderImage}
+          src={ad.image_url}
           alt={ad.title}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
           loading="lazy"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        {ad.category && (
+          <span className="absolute top-2 left-2 bg-primary/90 text-primary-foreground text-xs px-2 py-1 rounded-md">
+            {ad.category}
+          </span>
+        )}
       </div>
       
       <div className="p-4">
@@ -38,26 +39,16 @@ export function AdCard({ ad, onClick, index }: AdCardProps) {
         </h3>
         
         <p className="mt-2 text-xl font-bold text-primary">
-          {ad.price}
+          {ad.price_text || "Pris ej angivet"}
         </p>
         
-        <div className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground">
-          <MapPin className="h-4 w-4" />
-          <span>{ad.location}</span>
+        <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <MapPin className="h-4 w-4" />
+            <span>{ad.location}</span>
+          </div>
         </div>
       </div>
     </article>
   );
-}
-
-function getImageId(index: number): string {
-  const images = [
-    '1510915361894-db8b60106cb1', // guitar
-    '1598488035139-bdbb2231ce04', // synth
-    '1519892300165-cb5542fb47c7', // drums
-    '1493225457124-a3eb161ffa5f', // music studio
-    '1511379938547-c1f69419868d', // piano
-    '1507838153414-b4b713384a76', // guitar closeup
-  ];
-  return images[index - 1] || images[0];
 }

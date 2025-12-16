@@ -20,7 +20,7 @@ export function AdGrid({ ads, isLoading, onAdClick }: AdGridProps) {
   if (ads.length === 0) {
     return (
       <div className="text-center py-20">
-        <p className="text-muted-foreground text-lg">No ads found. Try a different search.</p>
+        <p className="text-muted-foreground text-lg">Inga annonser hittades. Försök med en annan sökning.</p>
       </div>
     );
   }
@@ -29,7 +29,7 @@ export function AdGrid({ ads, isLoading, onAdClick }: AdGridProps) {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {ads.map((ad, index) => (
         <AdCard 
-          key={ad.ad_id} 
+          key={ad.ad_path} 
           ad={ad} 
           onClick={() => onAdClick(ad)}
           index={index}

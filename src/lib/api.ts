@@ -1,14 +1,23 @@
 import { supabase } from "@/integrations/supabase/client";
 
 export interface Ad {
-  ad_id: string;
   title: string;
-  price: string;
+  ad_path: string;
+  ad_url: string;
+  category: string;
   location: string;
+  date: string;
+  price_text: string | null;
+  price_amount: number | null;
+  image_url: string;
 }
 
-export interface AdDetails extends Ad {
+export interface AdDetails {
+  title: string;
   description: string;
+  price_text: string | null;
+  price_amount: number | null;
+  location: string;
   images: string[];
   contact_info: {
     email?: string;
@@ -17,10 +26,9 @@ export interface AdDetails extends Ad {
 }
 
 export interface AdsResponse {
+  source_url: string;
+  count: number;
   ads: Ad[];
-  page: number;
-  per_page: number;
-  total_ads: number;
 }
 
 async function callParsebotProxy<T>(endpoint: string, payload: Record<string, unknown>): Promise<T> {
@@ -39,6 +47,6 @@ export async function fetchAdListings(category?: string, page: number = 1): Prom
   return callParsebotProxy<AdsResponse>('fetch_ad_listings', { category, page });
 }
 
-export async function getAdDetails(ad_id: string): Promise<AdDetails> {
-  return callParsebotProxy<AdDetails>('get_ad_details', { ad_id });
+export async function getAdDetails(ad_path: string): Promise<AdDetails> {
+  return callParsebotProxy<AdDetails>('get_ad_details', { ad_path });
 }
