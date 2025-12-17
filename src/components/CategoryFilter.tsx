@@ -1,21 +1,21 @@
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
-import { Guitar, Drum, Piano, Mic2, Speaker, Music2 } from "lucide-react";
+import { Guitar, Drum, Piano, Mic2, Speaker, Music2, Radio } from "lucide-react";
 
 interface CategoryFilterProps {
   selectedCategory: string | null;
   onCategoryChange: (category: string | null) => void;
 }
 
-// TODO: Categories currently disabled - parse.bot scraper only supports one category
-// Re-enable when scraper is configured for multiple categories
+// Categories for client-side filtering
 const categories = [
-  { id: null, label: "All", icon: Music2 },
-  // { id: "guitars", label: "Guitars", icon: Guitar },
-  // { id: "drums", label: "Drums", icon: Drum },
-  // { id: "keyboards", label: "Keys", icon: Piano },
-  // { id: "microphones", label: "Mics", icon: Mic2 },
-  // { id: "amplifiers", label: "Amps", icon: Speaker },
+  { id: null, label: "Alla", icon: Music2 },
+  { id: "gitarr", label: "Gitarrer", icon: Guitar },
+  { id: "trumm", label: "Trummor", icon: Drum },
+  { id: "piano", label: "Piano/Keys", icon: Piano },
+  { id: "mikrofon", label: "Mikrofoner", icon: Mic2 },
+  { id: "förstärkare", label: "Förstärkare", icon: Speaker },
+  { id: "synth", label: "Syntar", icon: Radio },
 ];
 
 export function CategoryFilter({ selectedCategory, onCategoryChange }: CategoryFilterProps) {

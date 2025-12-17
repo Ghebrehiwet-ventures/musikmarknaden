@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
@@ -18,19 +18,45 @@ export default function Index() {
   
   const { startHoverPrefetch, cancelHoverPrefetch } = usePrefetchAdDetails();
 
+  // Fetch all ads without category filter (filtering done client-side)
   const { data, isLoading, error } = useQuery({
-    queryKey: ['ads', selectedCategory, currentPage],
-    queryFn: () => fetchAdListings(selectedCategory ?? undefined, currentPage),
+    queryKey: ['ads', currentPage],
+    queryFn: () => fetchAdListings(undefined, currentPage),
     retry: 1,
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
-  const ads = data?.ads || [];
-  const totalAds = data?.count || 0;
+  const allAds = data?.ads || [];
+  
+  // Client-side filtering for search and category
+  const filteredAds = useMemo(() => {
+    return allAds.filter(ad => {
+      // Search filter - match title, location, or price
+      const searchLower = searchQuery.toLowerCase().trim();
+      const matchesSearch = !searchLower || 
+        ad.title.toLowerCase().includes(searchLower) ||
+        ad.location.toLowerCase().includes(searchLower) ||
+        (ad.price_text?.toLowerCase().includes(searchLower));
+      
+      // Category filter - match ad category
+      const matchesCategory = !selectedCategory || 
+        ad.category?.toLowerCase().includes(selectedCategory.toLowerCase());
+      
+      return matchesSearch && matchesCategory;
+    });
+  }, [allAds, searchQuery, selectedCategory]);
+
+  const totalAds = filteredAds.length;
   const perPage = 20;
   const totalPages = Math.max(1, Math.ceil(totalAds / perPage));
+  
+  // Paginate filtered results
+  const paginatedAds = useMemo(() => {
+    const start = (currentPage - 1) * perPage;
+    return filteredAds.slice(start, start + perPage);
+  }, [filteredAds, currentPage, perPage]);
 
   const handleAdClick = (ad: Ad) => {
     setSelectedAd(ad);
@@ -39,7 +65,7 @@ export default function Index() {
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    console.log("Searching for:", query);
+    setCurrentPage(1); // Reset to first page on new search
   };
 
   return (
@@ -68,12 +94,27 @@ export default function Index() {
           </div>
 
           <AdGrid 
-            ads={ads} 
+            ads={paginatedAds} 
             isLoading={isLoading}
             onAdClick={handleAdClick}
             onAdHoverStart={startHoverPrefetch}
             onAdHoverEnd={cancelHoverPrefetch}
           />
+
+          {!isLoading && filteredAds.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground text-lg">
+                Inga annonser hittades{searchQuery && ` för "${searchQuery}"`}
+                {selectedCategory && ` i kategorin "${selectedCategory}"`}
+              </p>
+              <button 
+                onClick={() => { setSearchQuery(""); setSelectedCategory(null); }}
+                className="mt-4 text-primary hover:underline"
+              >
+                Rensa filter
+              </button>
+            </div>
+          )}
 
           {totalPages > 1 && (
             <Pagination

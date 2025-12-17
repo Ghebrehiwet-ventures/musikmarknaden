@@ -1,12 +1,26 @@
+import { useState } from "react";
 import { Search } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
 interface HeroProps {
   onSearch: (query: string) => void;
+  searchQuery?: string;
 }
 
-export function Hero({ onSearch }: HeroProps) {
+export function Hero({ onSearch, searchQuery: externalQuery }: HeroProps) {
+  const [inputValue, setInputValue] = useState(externalQuery || "");
+
+  const handleSearch = () => {
+    onSearch(inputValue);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
+
   return (
     <section className="relative overflow-hidden gradient-hero py-24 md:py-32">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_hsl(35_100%_55%_/_0.1),_transparent_50%)]" />
@@ -28,26 +42,24 @@ export function Hero({ onSearch }: HeroProps) {
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               <Input 
-                placeholder="Search guitars, synths, drums..."
+                placeholder="Sök gitarrer, syntar, trummor..."
                 className="h-14 pl-12 pr-4 bg-card border-border/50 text-base"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    onSearch((e.target as HTMLInputElement).value);
-                  }
-                }}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
               />
             </div>
-            <Button variant="hero" size="lg" className="shrink-0">
-              Search Gear
+            <Button variant="hero" size="lg" className="shrink-0" onClick={handleSearch}>
+              Sök
             </Button>
           </div>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-2 text-sm text-muted-foreground animate-fade-up" style={{ animationDelay: '0.3s' }}>
-            <span>Popular:</span>
-            <Button variant="muted" size="sm" onClick={() => onSearch('guitar')}>Guitars</Button>
-            <Button variant="muted" size="sm" onClick={() => onSearch('synthesizer')}>Synths</Button>
-            <Button variant="muted" size="sm" onClick={() => onSearch('drums')}>Drums</Button>
-            <Button variant="muted" size="sm" onClick={() => onSearch('amplifier')}>Amps</Button>
+            <span>Populärt:</span>
+            <Button variant="muted" size="sm" onClick={() => { setInputValue('gitarr'); onSearch('gitarr'); }}>Gitarrer</Button>
+            <Button variant="muted" size="sm" onClick={() => { setInputValue('synth'); onSearch('synth'); }}>Syntar</Button>
+            <Button variant="muted" size="sm" onClick={() => { setInputValue('trumm'); onSearch('trumm'); }}>Trummor</Button>
+            <Button variant="muted" size="sm" onClick={() => { setInputValue('förstärkare'); onSearch('förstärkare'); }}>Förstärkare</Button>
           </div>
         </div>
       </div>
