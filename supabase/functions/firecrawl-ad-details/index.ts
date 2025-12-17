@@ -40,7 +40,7 @@ serve(async (req) => {
       
       // Return cached data if less than 7 days old
       if (daysSinceUpdate < 7) {
-        console.log('Returning cached ad details for:', ad_url);
+        console.log('✓ Cache hit for:', ad_url, `(${daysSinceUpdate.toFixed(1)} days old)`);
         return new Response(
           JSON.stringify({
             title: cached.title,
@@ -52,9 +52,12 @@ serve(async (req) => {
             contact_info: cached.contact_info || {},
             seller: cached.seller,
             condition: cached.condition,
+            fromCache: true,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      } else {
+        console.log('Cache expired for:', ad_url, `(${daysSinceUpdate.toFixed(1)} days old)`);
       }
     }
 
@@ -67,7 +70,8 @@ serve(async (req) => {
       );
     }
 
-    console.log('Scraping ad details from:', ad_url);
+    console.log('× Cache miss - scraping from Firecrawl:', ad_url);
+    const scrapeStart = Date.now();
 
     const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
@@ -92,7 +96,8 @@ serve(async (req) => {
       );
     }
 
-    console.log('Scrape successful, parsing ad details');
+    const scrapeTime = Date.now() - scrapeStart;
+    console.log(`Scrape successful in ${scrapeTime}ms, parsing ad details`);
 
     const markdown = data.data?.markdown || data.markdown || '';
     const html = data.data?.html || data.html || '';
@@ -126,7 +131,7 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify(adDetails),
+      JSON.stringify({ ...adDetails, fromCache: false }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {

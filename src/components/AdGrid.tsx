@@ -6,9 +6,11 @@ interface AdGridProps {
   ads: Ad[];
   isLoading: boolean;
   onAdClick: (ad: Ad) => void;
+  onAdHoverStart?: (ad: Ad) => void;
+  onAdHoverEnd?: () => void;
 }
 
-export function AdGrid({ ads, isLoading, onAdClick }: AdGridProps) {
+export function AdGrid({ ads, isLoading, onAdClick, onAdHoverStart, onAdHoverEnd }: AdGridProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -33,6 +35,8 @@ export function AdGrid({ ads, isLoading, onAdClick }: AdGridProps) {
           ad={ad} 
           onClick={() => onAdClick(ad)}
           index={index}
+          onHoverStart={() => onAdHoverStart?.(ad)}
+          onHoverEnd={onAdHoverEnd}
         />
       ))}
     </div>

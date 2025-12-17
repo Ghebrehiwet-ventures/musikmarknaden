@@ -1,12 +1,12 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { ScrollArea } from "./ui/scroll-area";
-import { Skeleton } from "./ui/skeleton";
 import { Badge } from "./ui/badge";
 import { Ad, getAdDetails } from "@/lib/api";
 import { MapPin, Mail, Phone, Loader2, ChevronLeft, ChevronRight, ExternalLink, User, CheckCircle } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { cn } from "@/lib/utils";
 
 interface AdDetailModalProps {
   ad: Ad | null;
@@ -71,8 +71,15 @@ function cleanDescription(input: string, ad: Ad | null) {
 
 export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [loadingTime, setLoadingTime] = useState(0);
+  const queryClient = useQueryClient();
 
-  const { data: details, isLoading } = useQuery({
+  // Check if data is already cached
+  const isCached = ad?.ad_url 
+    ? !!queryClient.getQueryData(["ad-details", ad.ad_url]) 
+    : false;
+
+  const { data: details, isLoading, isFetching } = useQuery({
     queryKey: ["ad-details", ad?.ad_url],
     queryFn: () => getAdDetails(ad!.ad_url),
     enabled: !!ad?.ad_url && open,
@@ -83,6 +90,20 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
     refetchOnMount: false,
     refetchOnReconnect: false,
   });
+
+  // Track loading time for better UX feedback
+  useEffect(() => {
+    let interval: number;
+    if (isLoading && !isCached) {
+      setLoadingTime(0);
+      interval = window.setInterval(() => {
+        setLoadingTime(t => t + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isLoading, isCached]);
 
   useEffect(() => {
     setCurrentImageIndex(0);
@@ -206,20 +227,27 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
             <div className="px-6 pb-4 flex-1 min-h-0">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-semibold text-foreground">Beskrivning</h4>
-                {isLoading && (
+                {isLoading && !isCached && (
                   <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Hämtar…
+                    {loadingTime >= 5 
+                      ? "Det tar lite längre..." 
+                      : "Hämtar från Gearloop..."}
                   </span>
                 )}
               </div>
 
-              {isLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-11/12" />
-                  <Skeleton className="h-4 w-10/12" />
-                  <Skeleton className="h-4 w-9/12" />
+              {isLoading && !isCached ? (
+                <div className="space-y-2.5">
+                  <div className={cn("h-4 rounded bg-muted/70 animate-pulse", loadingTime >= 3 ? "w-full" : "w-11/12")} />
+                  <div className={cn("h-4 rounded bg-muted/60 animate-pulse", loadingTime >= 3 ? "w-11/12" : "w-10/12")} style={{ animationDelay: "75ms" }} />
+                  <div className={cn("h-4 rounded bg-muted/50 animate-pulse", loadingTime >= 3 ? "w-10/12" : "w-9/12")} style={{ animationDelay: "150ms" }} />
+                  <div className="h-4 rounded bg-muted/40 animate-pulse w-8/12" style={{ animationDelay: "225ms" }} />
+                  {loadingTime >= 5 && (
+                    <p className="text-xs text-muted-foreground mt-3 animate-fade-in">
+                      Första gången tar längre – sedan cachas det i 7 dagar.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <ScrollArea className="h-[150px] md:h-[200px]">

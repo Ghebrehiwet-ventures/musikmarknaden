@@ -7,6 +7,7 @@ import { CategoryFilter } from "@/components/CategoryFilter";
 import { AdDetailModal } from "@/components/AdDetailModal";
 import { Pagination } from "@/components/Pagination";
 import { fetchAdListings, Ad } from "@/lib/api";
+import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
 
 export default function Index() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -14,12 +15,14 @@ export default function Index() {
   const [selectedAd, setSelectedAd] = useState<Ad | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  
+  const { startHoverPrefetch, cancelHoverPrefetch } = usePrefetchAdDetails();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['ads', selectedCategory, currentPage],
     queryFn: () => fetchAdListings(selectedCategory ?? undefined, currentPage),
     retry: 1,
-    staleTime: 5 * 60 * 1000, // 5 min for dev, increase later
+    staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -68,6 +71,8 @@ export default function Index() {
             ads={ads} 
             isLoading={isLoading}
             onAdClick={handleAdClick}
+            onAdHoverStart={startHoverPrefetch}
+            onAdHoverEnd={cancelHoverPrefetch}
           />
 
           {totalPages > 1 && (
