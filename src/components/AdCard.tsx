@@ -1,4 +1,4 @@
-import { MapPin, Calendar } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { Ad } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -6,12 +6,17 @@ interface AdCardProps {
   ad: Ad;
   onClick: () => void;
   index: number;
+  onHoverStart?: () => void;
+  onHoverEnd?: () => void;
 }
 
-export function AdCard({ ad, onClick, index }: AdCardProps) {
+export function AdCard({ ad, onClick, index, onHoverStart, onHoverEnd }: AdCardProps) {
   return (
     <article 
       onClick={onClick}
+      onMouseEnter={onHoverStart}
+      onMouseLeave={onHoverEnd}
+      onTouchStart={onHoverStart}
       className={cn(
         "group cursor-pointer rounded-xl overflow-hidden bg-card border border-border/50 shadow-card transition-all duration-300 hover:shadow-card-hover hover:border-primary/30 hover:-translate-y-1",
         "animate-fade-up"
