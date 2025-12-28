@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.firecrawl-ad-details]
 verify_jwt = false
+
+[functions.sync-ads]
+verify_jwt = false
