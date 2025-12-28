@@ -23,7 +23,7 @@ const CATEGORIES = [
   'dj-utrustning-alla',
   'pedaler-effekter-alla',
   'gitarrforstarkare-alla',
-  'basförstarkare-alla',
+  'basf%C3%B6rstarkare-alla',
   'ovriga-forstarkare-alla',
   'mikrofoner-alla',
   'pa-Live-alla',
