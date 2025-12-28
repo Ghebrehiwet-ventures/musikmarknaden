@@ -15,13 +15,13 @@ export function Header() {
         
         <nav className="hidden md:flex items-center gap-8">
           <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            Browse
+            Bläddra
           </a>
           <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            Sell
+            Sälj
           </a>
           <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            Categories
+            Kategorier
           </a>
         </nav>
 
@@ -30,8 +30,8 @@ export function Header() {
           <Button variant="ghost" size="icon">
             <Search className="h-5 w-5" />
           </Button>
-          <Button variant="outline" size="sm">Sign In</Button>
-          <Button size="sm">Post Ad</Button>
+          <Button variant="outline" size="sm">Logga in</Button>
+          <Button size="sm">Lägg annons</Button>
         </div>
       </div>
     </header>

@@ -29,13 +29,13 @@ export function Hero({ onSearch, searchQuery: externalQuery }: HeroProps) {
       <div className="container relative z-10">
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="text-4xl font-bold tracking-tight md:text-6xl lg:text-7xl animate-fade-up">
-            Find Your Next
-            <span className="block text-gradient mt-2">Music Gear</span>
+            Hitta din nästa
+            <span className="block text-gradient mt-2">Musikutrustning</span>
           </h1>
           
           <p className="mt-6 text-lg text-muted-foreground md:text-xl animate-fade-up" style={{ animationDelay: '0.1s' }}>
-            Buy and sell guitars, synths, drums, and more. 
-            The marketplace for musicians.
+            Köp och sälj gitarrer, syntar, trummor och mer. 
+            Marknadsplatsen för musiker.
           </p>
 
           <div className="mt-10 flex flex-col sm:flex-row gap-3 max-w-xl mx-auto animate-fade-up" style={{ animationDelay: '0.2s' }}>
