@@ -62,6 +62,57 @@ export type Database = {
         }
         Relationships: []
       }
+      ad_listings_cache: {
+        Row: {
+          ad_path: string | null
+          ad_url: string
+          category: string | null
+          created_at: string | null
+          date: string | null
+          first_seen_at: string | null
+          id: string
+          image_url: string | null
+          is_active: boolean | null
+          last_seen_at: string | null
+          location: string | null
+          price_amount: number | null
+          price_text: string | null
+          title: string
+        }
+        Insert: {
+          ad_path?: string | null
+          ad_url: string
+          category?: string | null
+          created_at?: string | null
+          date?: string | null
+          first_seen_at?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          last_seen_at?: string | null
+          location?: string | null
+          price_amount?: number | null
+          price_text?: string | null
+          title: string
+        }
+        Update: {
+          ad_path?: string | null
+          ad_url?: string
+          category?: string | null
+          created_at?: string | null
+          date?: string | null
+          first_seen_at?: string | null
+          id?: string
+          image_url?: string | null
+          is_active?: boolean | null
+          last_seen_at?: string | null
+          location?: string | null
+          price_amount?: number | null
+          price_text?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
