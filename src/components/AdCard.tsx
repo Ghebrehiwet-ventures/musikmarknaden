@@ -44,7 +44,7 @@ export function AdCard({ ad, onClick, index, onHoverStart, onHoverEnd }: AdCardP
         </h3>
         
         <p className="mt-2 text-xl font-bold text-primary">
-          {ad.price_text || "Pris ej angivet"}
+          {ad.price_text || "Pris saknas"}
         </p>
         
         <div className="mt-3 flex items-center justify-between text-sm text-muted-foreground">
