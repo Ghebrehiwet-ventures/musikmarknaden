@@ -113,7 +113,7 @@ async function fetchAdsForCategory(parsebotApiKey: string, category: string): Pr
   return categoryAds;
 }
 
-async function fetchAllAdsFromParsebot(parsebotApiKey: string): Promise<Ad[]> {
+async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any): Promise<Ad[]> {
   const allAds: Ad[] = [];
   const seenUrls = new Set<string>();
 
@@ -126,14 +126,43 @@ async function fetchAllAdsFromParsebot(parsebotApiKey: string): Promise<Ad[]> {
       const categoryAds = await fetchAdsForCategory(parsebotApiKey, category);
       
       // Deduplicate in case ads appear in multiple categories
+      const newAdsInCategory: Ad[] = [];
       for (const ad of categoryAds) {
         if (!seenUrls.has(ad.ad_url)) {
           seenUrls.add(ad.ad_url);
           allAds.push(ad);
+          newAdsInCategory.push(ad);
         }
       }
       
-      console.log(`${category}: ${categoryAds.length} ads (total unique: ${allAds.length})`);
+      console.log(`${category}: ${categoryAds.length} ads (${newAdsInCategory.length} unique, total: ${allAds.length})`);
+      
+      // BATCH SAVE after each category to prevent timeout data loss
+      if (newAdsInCategory.length > 0) {
+        const adsToSave = newAdsInCategory.map(ad => ({
+          ad_url: ad.ad_url,
+          ad_path: ad.ad_path,
+          title: ad.title,
+          category: ad.category,
+          location: ad.location,
+          date: ad.date,
+          price_text: ad.price_text,
+          price_amount: ad.price_amount,
+          image_url: ad.image_url,
+          is_active: true,
+          last_seen_at: new Date().toISOString(),
+        }));
+        
+        const { error: upsertError } = await supabase
+          .from('ad_listings_cache')
+          .upsert(adsToSave, { onConflict: 'ad_url' });
+        
+        if (upsertError) {
+          console.error(`Failed to save ${category}:`, upsertError);
+        } else {
+          console.log(`Saved ${newAdsInCategory.length} ads from ${category}`);
+        }
+      }
       
       // Small delay between categories
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -142,7 +171,7 @@ async function fetchAllAdsFromParsebot(parsebotApiKey: string): Promise<Ad[]> {
     }
   }
 
-  console.log(`Total unique ads fetched: ${allAds.length}`);
+  console.log(`Total unique ads fetched and saved: ${allAds.length}`);
   return allAds;
 }
 
@@ -213,8 +242,8 @@ async function fetchAdDetails(adUrl: string, firecrawlApiKey: string): Promise<a
 async function syncAds(supabase: any, parsebotApiKey: string, firecrawlApiKey: string) {
   const startTime = Date.now();
   
-  // Step 1: Fetch all ads from parse.bot
-  const allAds = await fetchAllAdsFromParsebot(parsebotApiKey);
+  // Step 1: Fetch all ads from parse.bot (saves batch-wise during fetch)
+  const allAds = await fetchAllAdsFromParsebot(parsebotApiKey, supabase);
   
   if (allAds.length === 0) {
     console.log('No ads fetched, aborting sync');
@@ -249,35 +278,8 @@ async function syncAds(supabase: any, parsebotApiKey: string, firecrawlApiKey: s
     }
   }
 
-  // Step 4: Upsert all current ads
-  const adsToUpsert = allAds.map(ad => ({
-    ad_url: ad.ad_url,
-    ad_path: ad.ad_path,
-    title: ad.title,
-    category: ad.category,
-    location: ad.location,
-    date: ad.date,
-    price_text: ad.price_text,
-    price_amount: ad.price_amount,
-    image_url: ad.image_url,
-    is_active: true,
-    last_seen_at: new Date().toISOString(),
-  }));
-
-  console.log(`Upserting ${adsToUpsert.length} ads`);
-  
-  // Batch upsert in chunks of 100
-  const chunkSize = 100;
-  for (let i = 0; i < adsToUpsert.length; i += chunkSize) {
-    const chunk = adsToUpsert.slice(i, i + chunkSize);
-    const { error: upsertError } = await supabase
-      .from('ad_listings_cache')
-      .upsert(chunk, { onConflict: 'ad_url' });
-    
-    if (upsertError) {
-      console.error(`Failed to upsert chunk ${i}:`, upsertError);
-    }
-  }
+  // Step 4: Ads are already upserted batch-wise during fetch - skip redundant upsert
+  console.log(`All ${allAds.length} ads already saved during fetch`);
 
   // Step 5: Find ads without details in cache
   const { data: cachedDetails, error: cacheError } = await supabase

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { AdGrid } from "@/components/AdGrid";
-import { CategoryFilter } from "@/components/CategoryFilter";
+import { CategoryFilter, matchesCategory } from "@/components/CategoryFilter";
 import { AdDetailModal } from "@/components/AdDetailModal";
 import { Pagination } from "@/components/Pagination";
 import { fetchAdListings, Ad } from "@/lib/api";
@@ -18,10 +18,10 @@ export default function Index() {
   
   const { startHoverPrefetch, cancelHoverPrefetch } = usePrefetchAdDetails();
 
-  // Fetch all ads without category filter (filtering done client-side)
+  // Fetch all active ads from cache (no pagination at API level)
   const { data, isLoading, error } = useQuery({
-    queryKey: ['ads', currentPage],
-    queryFn: () => fetchAdListings(undefined, currentPage),
+    queryKey: ['ads'],
+    queryFn: () => fetchAdListings(),
     retry: 1,
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
@@ -35,16 +35,15 @@ export default function Index() {
     return allAds.filter(ad => {
       // Search filter - match title, location, or price
       const searchLower = searchQuery.toLowerCase().trim();
-      const matchesSearch = !searchLower || 
+      const matchesSearchQuery = !searchLower || 
         ad.title.toLowerCase().includes(searchLower) ||
         ad.location.toLowerCase().includes(searchLower) ||
         (ad.price_text?.toLowerCase().includes(searchLower));
       
-      // Category filter - match ad category
-      const matchesCategory = !selectedCategory || 
-        ad.category?.toLowerCase().includes(selectedCategory.toLowerCase());
+      // Category filter using helper function
+      const matchesCat = matchesCategory(ad.category || '', selectedCategory);
       
-      return matchesSearch && matchesCategory;
+      return matchesSearchQuery && matchesCat;
     });
   }, [allAds, searchQuery, selectedCategory]);
 

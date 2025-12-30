@@ -48,13 +48,35 @@ async function callParsebotProxy<T>(endpoint: string, payload: Record<string, un
   return data as T;
 }
 
-export async function fetchAdListings(category?: string, page: number = 1): Promise<AdsResponse> {
-  // Only include category if it's defined - parse.bot has issues with undefined values
-  const payload: Record<string, unknown> = { page };
-  if (category) {
-    payload.category = category;
+export async function fetchAdListings(): Promise<AdsResponse> {
+  // Fetch all active ads directly from the cache
+  const { data, error } = await supabase
+    .from('ad_listings_cache')
+    .select('*')
+    .eq('is_active', true)
+    .order('date', { ascending: false });
+
+  if (error) {
+    throw new Error(error.message || 'Failed to fetch ads from cache');
   }
-  return callParsebotProxy<AdsResponse>('fetch_ad_listings', payload);
+
+  const ads: Ad[] = (data || []).map(row => ({
+    title: row.title,
+    ad_path: row.ad_path || '',
+    ad_url: row.ad_url,
+    category: row.category || '',
+    location: row.location || '',
+    date: row.date || '',
+    price_text: row.price_text,
+    price_amount: row.price_amount,
+    image_url: row.image_url || '',
+  }));
+
+  return {
+    source_url: 'cache',
+    count: ads.length,
+    ads,
+  };
 }
 
 export async function getAdDetails(ad_url: string): Promise<AdDetails> {
