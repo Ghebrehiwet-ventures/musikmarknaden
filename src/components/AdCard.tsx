@@ -26,7 +26,7 @@ export function AdCard({ ad, onClick, onHoverStart, onHoverEnd }: AdCardProps) {
       </div>
       
       <div className="p-2 border-t border-border">
-        <p className="font-medium text-sm">
+        <p className="font-bold text-foreground">
           {ad.price_text || "–"}
         </p>
         
