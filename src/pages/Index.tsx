@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/Header";
 import { Hero } from "@/components/Hero";
 import { AdGrid } from "@/components/AdGrid";
+import { AdList } from "@/components/AdList";
 import { CategoryFilter, matchesCategory } from "@/components/CategoryFilter";
 import { AdDetailModal } from "@/components/AdDetailModal";
 import { Pagination } from "@/components/Pagination";
+import { ViewToggle, ViewMode } from "@/components/ViewToggle";
 import { fetchAdListings, Ad } from "@/lib/api";
 import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
 
@@ -15,6 +17,7 @@ export default function Index() {
   const [selectedAd, setSelectedAd] = useState<Ad | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
   
   const { startHoverPrefetch, cancelHoverPrefetch } = usePrefetchAdDetails();
 
@@ -83,22 +86,35 @@ export default function Index() {
               </p>
             </div>
             
-            <CategoryFilter 
-              selectedCategory={selectedCategory}
-              onCategoryChange={(cat) => {
-                setSelectedCategory(cat);
-                setCurrentPage(1);
-              }}
-            />
+            <div className="flex items-center gap-3">
+              <CategoryFilter 
+                selectedCategory={selectedCategory}
+                onCategoryChange={(cat) => {
+                  setSelectedCategory(cat);
+                  setCurrentPage(1);
+                }}
+              />
+              <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+            </div>
           </div>
 
-          <AdGrid 
-            ads={paginatedAds} 
-            isLoading={isLoading}
-            onAdClick={handleAdClick}
-            onAdHoverStart={startHoverPrefetch}
-            onAdHoverEnd={cancelHoverPrefetch}
-          />
+          {viewMode === "grid" ? (
+            <AdGrid 
+              ads={paginatedAds} 
+              isLoading={isLoading}
+              onAdClick={handleAdClick}
+              onAdHoverStart={startHoverPrefetch}
+              onAdHoverEnd={cancelHoverPrefetch}
+            />
+          ) : (
+            <AdList 
+              ads={paginatedAds} 
+              isLoading={isLoading}
+              onAdClick={handleAdClick}
+              onAdHoverStart={startHoverPrefetch}
+              onAdHoverEnd={cancelHoverPrefetch}
+            />
+          )}
 
           {!isLoading && filteredAds.length === 0 && (
             <div className="text-center py-12">
