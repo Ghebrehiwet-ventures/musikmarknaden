@@ -13,22 +13,22 @@ interface AdGridProps {
 export function AdGrid({ ads, isLoading, onAdClick, onAdHoverStart, onAdHoverEnd }: AdGridProps) {
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   if (ads.length === 0) {
     return (
-      <div className="text-center py-20">
-        <p className="text-muted-foreground text-lg">Inga annonser hittades. Försök med en annan sökning.</p>
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">Inga annonser hittades.</p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
       {ads.map((ad, index) => (
         <AdCard 
           key={ad.ad_path} 
