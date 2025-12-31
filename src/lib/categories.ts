@@ -8,15 +8,15 @@ export interface Category {
 
 export const CATEGORIES: Category[] = [
   { id: "instrument", label: "Instrument" },
-  { id: "amplifiers", label: "Amplifiers" },
-  { id: "pedals-effects", label: "Pedals & Effects" },
+  { id: "amplifiers", label: "Förstärkare" },
+  { id: "pedals-effects", label: "Pedaler & Effekter" },
   { id: "studio", label: "Studio" },
   { id: "dj-live", label: "DJ & Live" },
-  { id: "synth-modular", label: "Synth & Modular" },
-  { id: "software-computers", label: "Software & Computers" },
-  { id: "accessories-parts", label: "Accessories & Parts" },
-  { id: "services", label: "Services" },
-  { id: "other", label: "Other" },
+  { id: "synth-modular", label: "Synth & Modulärt" },
+  { id: "software-computers", label: "Mjukvara & Datorer" },
+  { id: "accessories-parts", label: "Tillbehör & Delar" },
+  { id: "services", label: "Tjänster" },
+  { id: "other", label: "Övrigt" },
 ];
 
 // Mapping from external/scraped category names to internal category IDs
