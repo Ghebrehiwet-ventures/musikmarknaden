@@ -14,7 +14,7 @@ export function AdGrid({ ads, isLoading, onAdClick, onAdHoverStart, onAdHoverEnd
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -22,13 +22,13 @@ export function AdGrid({ ads, isLoading, onAdClick, onAdHoverStart, onAdHoverEnd
   if (ads.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-sm text-muted-foreground">Inga annonser hittades.</p>
+        <p className="text-muted-foreground">Inga annonser hittades.</p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-px bg-border">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
       {ads.map((ad, index) => (
         <AdCard 
           key={ad.ad_path} 
