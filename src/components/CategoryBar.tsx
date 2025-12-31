@@ -1,18 +1,4 @@
-interface Category {
-  id: string;
-  label: string;
-}
-
-const categories: Category[] = [
-  { id: "gitarr", label: "Gitarrer" },
-  { id: "piano", label: "Keyboards" },
-  { id: "trummor", label: "Trummor" },
-  { id: "forstarkare", label: "Förstärkare" },
-  { id: "mikrofon", label: "Mikrofoner" },
-  { id: "studio", label: "Studio" },
-  { id: "horlurar", label: "Hörlurar" },
-  { id: "tillbehor", label: "Tillbehör" },
-];
+import { CATEGORIES } from "@/lib/categories";
 
 interface CategoryBarProps {
   selectedCategory: string | null;
@@ -35,7 +21,7 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
             Alla
           </button>
 
-          {categories.map((category) => {
+          {CATEGORIES.map((category) => {
             const isSelected = selectedCategory === category.id;
             
             return (
