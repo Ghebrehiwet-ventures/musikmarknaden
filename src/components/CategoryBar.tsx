@@ -7,9 +7,9 @@ interface CategoryBarProps {
 
 export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarProps) {
   return (
-    <div className="border-b border-border py-2">
+    <div className="border-b border-border py-2 overflow-hidden">
       <div className="max-w-[1000px] mx-auto px-4">
-        <div className="flex items-center gap-4 overflow-x-auto scrollbar-hide text-sm">
+        <div className="flex items-center gap-6 overflow-x-auto whitespace-nowrap text-sm scrollbar-hide">
           <button
             onClick={() => onCategoryChange(null)}
             className={`shrink-0 ${
