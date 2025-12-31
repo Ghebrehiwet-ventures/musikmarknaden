@@ -10,6 +10,7 @@ import { Pagination } from "@/components/Pagination";
 import { ViewToggle, ViewMode } from "@/components/ViewToggle";
 import { fetchAdListings, Ad } from "@/lib/api";
 import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
+import { mapToInternalCategory } from "@/lib/categories";
 
 export default function Index() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -40,9 +41,9 @@ export default function Index() {
         ad.location.toLowerCase().includes(searchLower) ||
         (ad.price_text?.toLowerCase().includes(searchLower));
       
-      const matchesCat = !selectedCategory || 
-        ad.category?.toLowerCase().includes(selectedCategory) ||
-        ad.title.toLowerCase().includes(selectedCategory);
+      // Map external category to internal category and filter
+      const internalCategory = mapToInternalCategory(ad.category);
+      const matchesCat = !selectedCategory || internalCategory === selectedCategory;
       
       return matchesSearchQuery && matchesCat;
     });
