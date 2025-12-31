@@ -15,7 +15,7 @@ export function AdCard({ ad, onClick, onHoverStart, onHoverEnd }: AdCardProps) {
       onClick={onClick}
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
-      className="group cursor-pointer bg-card border border-border rounded-md overflow-hidden hover:border-primary/50 transition-colors"
+      className="group cursor-pointer bg-card border border-border rounded-lg overflow-hidden hover:shadow-md hover:border-primary/30 transition-all"
     >
       <div className="aspect-[4/3] relative overflow-hidden bg-muted">
         <img 

@@ -1,9 +1,11 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { ChevronRight } from "lucide-react";
 import { Header } from "@/components/Header";
+import { HeroSearch } from "@/components/HeroSearch";
+import { CategoryBar } from "@/components/CategoryBar";
 import { AdGrid } from "@/components/AdGrid";
 import { AdList } from "@/components/AdList";
-import { CategoryFilter, matchesCategory } from "@/components/CategoryFilter";
 import { AdDetailModal } from "@/components/AdDetailModal";
 import { Pagination } from "@/components/Pagination";
 import { ViewToggle, ViewMode } from "@/components/ViewToggle";
@@ -16,7 +18,7 @@ export default function Index() {
   const [selectedAd, setSelectedAd] = useState<Ad | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
   
   const { startHoverPrefetch, cancelHoverPrefetch } = usePrefetchAdDetails();
 
@@ -39,14 +41,16 @@ export default function Index() {
         ad.location.toLowerCase().includes(searchLower) ||
         (ad.price_text?.toLowerCase().includes(searchLower));
       
-      const matchesCat = matchesCategory(ad.category || '', selectedCategory);
+      const matchesCat = !selectedCategory || 
+        ad.category?.toLowerCase().includes(selectedCategory) ||
+        ad.title.toLowerCase().includes(selectedCategory);
       
       return matchesSearchQuery && matchesCat;
     });
   }, [allAds, searchQuery, selectedCategory]);
 
   const totalAds = filteredAds.length;
-  const perPage = 30;
+  const perPage = 24;
   const totalPages = Math.max(1, Math.ceil(totalAds / perPage));
   
   const paginatedAds = useMemo(() => {
@@ -64,24 +68,33 @@ export default function Index() {
     setCurrentPage(1);
   };
 
+  const handleCategoryChange = (category: string | null) => {
+    setSelectedCategory(category);
+    setCurrentPage(1);
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      <Header searchQuery={searchQuery} onSearch={handleSearch} />
+      <Header />
       
-      <main className="container py-4">
-        {/* Filter bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-3 overflow-x-auto pb-2 sm:pb-0">
-            <CategoryFilter 
-              selectedCategory={selectedCategory}
-              onCategoryChange={(cat) => {
-                setSelectedCategory(cat);
-                setCurrentPage(1);
-              }}
-            />
+      <HeroSearch searchQuery={searchQuery} onSearch={handleSearch} />
+      
+      <CategoryBar 
+        selectedCategory={selectedCategory}
+        onCategoryChange={handleCategoryChange}
+      />
+      
+      <main className="container py-6">
+        {/* Section header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">
+              {searchQuery ? `Sökresultat för "${searchQuery}"` : "Populärt just nu"}
+            </h2>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
           
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-3">
             <span className="text-sm text-muted-foreground">
               {totalAds} annonser
             </span>
@@ -109,7 +122,7 @@ export default function Index() {
         )}
 
         {!isLoading && filteredAds.length === 0 && (
-          <div className="text-center py-8">
+          <div className="text-center py-12">
             <p className="text-muted-foreground">
               Inga annonser hittades{searchQuery && ` för "${searchQuery}"`}
             </p>
@@ -123,7 +136,7 @@ export default function Index() {
         )}
 
         {totalPages > 1 && (
-          <div className="mt-6">
+          <div className="mt-8">
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
@@ -141,3 +154,4 @@ export default function Index() {
     </div>
   );
 }
+
