@@ -22,7 +22,7 @@ interface CategoryBarProps {
 export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarProps) {
   return (
     <div className="border-b border-border py-2">
-      <div className="container">
+      <div className="max-w-[1000px] mx-auto px-4">
         <div className="flex items-center gap-4 overflow-x-auto scrollbar-hide text-sm">
           <button
             onClick={() => onCategoryChange(null)}
