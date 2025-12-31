@@ -1,4 +1,3 @@
-import { MapPin } from "lucide-react";
 import { Ad } from "@/lib/api";
 
 interface AdCardProps {
@@ -15,9 +14,9 @@ export function AdCard({ ad, onClick, onHoverStart, onHoverEnd }: AdCardProps) {
       onClick={onClick}
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
-      className="group cursor-pointer bg-card border border-border rounded overflow-hidden hover:border-foreground/20 transition-colors"
+      className="cursor-pointer border border-border hover:border-foreground/30 transition-colors"
     >
-      <div className="aspect-[4/3] relative overflow-hidden bg-muted">
+      <div className="aspect-square bg-muted">
         <img 
           src={ad.image_url || "/placeholder.svg"}
           alt={ad.title}
@@ -26,25 +25,18 @@ export function AdCard({ ad, onClick, onHoverStart, onHoverEnd }: AdCardProps) {
         />
       </div>
       
-      <div className="p-2.5">
-        <p className="font-semibold text-sm">
-          {ad.price_text || "Kontakta säljare"}
+      <div className="p-2 border-t border-border">
+        <p className="font-medium text-sm">
+          {ad.price_text || "–"}
         </p>
         
-        <h3 className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
+        <p className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
           {ad.title}
-        </h3>
+        </p>
         
-        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1.5">
-          <MapPin className="h-3 w-3" />
-          <span className="truncate">{ad.location}</span>
-          {ad.date && (
-            <>
-              <span className="mx-0.5">·</span>
-              <span>{ad.date}</span>
-            </>
-          )}
-        </div>
+        <p className="text-xs text-muted-foreground mt-1">
+          {ad.location}{ad.date && ` · ${ad.date}`}
+        </p>
       </div>
     </article>
   );
