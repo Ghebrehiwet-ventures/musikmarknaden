@@ -15,33 +15,32 @@ export function AdCard({ ad, onClick, onHoverStart, onHoverEnd }: AdCardProps) {
       onClick={onClick}
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
-      className="group cursor-pointer bg-card border border-border rounded-md overflow-hidden hover:border-primary/50 transition-colors"
+      className="cursor-pointer bg-card border border-border hover:bg-muted/30 transition-colors"
     >
-      <div className="aspect-[4/3] relative overflow-hidden bg-muted">
+      <div className="aspect-square overflow-hidden bg-muted">
         <img 
           src={ad.image_url || "/placeholder.svg"}
-          alt={ad.title}
+          alt=""
           className="w-full h-full object-cover"
           loading="lazy"
         />
       </div>
       
-      <div className="p-3">
-        <p className="font-bold text-primary">
-          {ad.price_text || "Kontakta säljare"}
+      <div className="p-2">
+        <p className="font-bold text-base text-foreground">
+          {ad.price_text || "Begär pris"}
         </p>
         
-        <h3 className="text-sm text-foreground line-clamp-2 mt-1">
+        <h3 className="text-sm text-muted-foreground mt-0.5 line-clamp-2 leading-snug">
           {ad.title}
         </h3>
         
-        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-2">
-          <MapPin className="h-3 w-3" />
+        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1.5">
           <span className="truncate">{ad.location}</span>
           {ad.date && (
             <>
-              <span className="mx-1">·</span>
-              <span>{ad.date}</span>
+              <span>·</span>
+              <span className="shrink-0">{ad.date}</span>
             </>
           )}
         </div>
