@@ -15,7 +15,7 @@ export function AdCard({ ad, onClick, onHoverStart, onHoverEnd }: AdCardProps) {
       onClick={onClick}
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
-      className="group cursor-pointer bg-card border border-border rounded-lg overflow-hidden hover:shadow-md hover:border-primary/30 transition-all"
+      className="group cursor-pointer bg-card border border-border rounded overflow-hidden hover:border-foreground/20 transition-colors"
     >
       <div className="aspect-[4/3] relative overflow-hidden bg-muted">
         <img 
@@ -26,21 +26,21 @@ export function AdCard({ ad, onClick, onHoverStart, onHoverEnd }: AdCardProps) {
         />
       </div>
       
-      <div className="p-3">
-        <p className="font-bold text-primary">
+      <div className="p-2.5">
+        <p className="font-semibold text-sm">
           {ad.price_text || "Kontakta säljare"}
         </p>
         
-        <h3 className="text-sm text-foreground line-clamp-2 mt-1">
+        <h3 className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
           {ad.title}
         </h3>
         
-        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-2">
+        <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1.5">
           <MapPin className="h-3 w-3" />
           <span className="truncate">{ad.location}</span>
           {ad.date && (
             <>
-              <span className="mx-1">·</span>
+              <span className="mx-0.5">·</span>
               <span>{ad.date}</span>
             </>
           )}

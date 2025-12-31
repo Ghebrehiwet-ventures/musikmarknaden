@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
 import { Header } from "@/components/Header";
 import { HeroSearch } from "@/components/HeroSearch";
 import { CategoryBar } from "@/components/CategoryBar";
@@ -84,22 +83,12 @@ export default function Index() {
         onCategoryChange={handleCategoryChange}
       />
       
-      <main className="container py-6">
-        {/* Section header */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold">
-              {searchQuery ? `Sökresultat för "${searchQuery}"` : "Populärt just nu"}
-            </h2>
-            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-          </div>
-          
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
-              {totalAds} annonser
-            </span>
-            <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
-          </div>
+      <main className="container py-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            {searchQuery ? `Resultat för "${searchQuery}"` : "Annonser"} · {totalAds} st
+          </h2>
+          <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
         </div>
 
         {/* Listings */}
