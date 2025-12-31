@@ -3,26 +3,21 @@ import { ThemeToggle } from "./ThemeToggle";
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-card">
-      <div className="container flex h-12 items-center gap-4">
-        <a href="/" className="font-semibold text-base shrink-0">
+    <header className="border-b border-border bg-background">
+      <div className="container flex h-10 items-center">
+        <a href="/" className="font-medium text-sm">
           GearMarket
         </a>
 
-        <nav className="hidden sm:flex items-center gap-4 ml-4">
-          <a href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            Så funkar det
-          </a>
-        </nav>
-
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="flex items-center gap-3 ml-auto text-sm">
           <ThemeToggle />
-          <Button variant="ghost" size="sm" className="h-8 text-sm">
+          <a href="/" className="text-muted-foreground hover:text-foreground">
             Logga in
-          </Button>
-          <Button size="sm" className="h-8 text-sm">
+          </a>
+          <span className="text-border">|</span>
+          <a href="/" className="hover:text-muted-foreground">
             Lägg upp annons
-          </Button>
+          </a>
         </div>
       </div>
     </header>

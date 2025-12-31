@@ -83,11 +83,9 @@ export default function Index() {
         onCategoryChange={handleCategoryChange}
       />
       
-      <main className="container py-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            {searchQuery ? `Resultat för "${searchQuery}"` : "Annonser"} · {totalAds} st
-          </h2>
+      <main className="container py-3">
+        <div className="flex items-center justify-between mb-2 text-sm text-muted-foreground">
+          <span>{totalAds} annonser{searchQuery && ` för "${searchQuery}"`}</span>
           <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
         </div>
 
