@@ -118,7 +118,11 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
   }, [details?.images, ad?.image_url]);
 
   const title = ad?.title ?? details?.title ?? "Annons";
-  const priceText = ad?.price_text ?? details?.price_text ?? "Pris ej angivet";
+  const priceText = (ad?.price_text && ad?.price_amount !== null) 
+    ? ad.price_text 
+    : (details?.price_text && details?.price_amount !== null) 
+      ? details.price_text 
+      : "Pris ej angivet";
   const location = ad?.location ?? details?.location ?? "";
   const description = details?.description ? cleanDescription(details.description, ad) : "";
 

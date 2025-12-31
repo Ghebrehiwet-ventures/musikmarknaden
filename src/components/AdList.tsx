@@ -71,7 +71,7 @@ export function AdList({ ads, isLoading, onAdClick, onAdHoverStart, onAdHoverEnd
 
           <div className="flex-shrink-0">
             <p className="font-bold text-primary whitespace-nowrap">
-              {ad.price_text || "—"}
+              {ad.price_text && ad.price_amount !== null ? ad.price_text : "Pris ej angivet"}
             </p>
           </div>
         </article>

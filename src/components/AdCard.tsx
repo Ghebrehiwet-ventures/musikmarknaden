@@ -27,7 +27,7 @@ export function AdCard({ ad, onClick, onHoverStart, onHoverEnd }: AdCardProps) {
       
       <div className="p-2">
         <p className="font-bold text-foreground">
-          {ad.price_text || "–"}
+          {ad.price_text && ad.price_amount !== null ? ad.price_text : "Pris ej angivet"}
         </p>
         
         <p className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
