@@ -33,6 +33,15 @@ export default function Index() {
 
   const allAds = data?.ads || [];
   
+  // Parse Swedish price format: "1.199 kr" -> 1199
+  const parsePriceFromText = (priceText: string | null): number | null => {
+    if (!priceText) return null;
+    // Remove "kr", spaces, and thousand separators (periods in Swedish format)
+    const cleaned = priceText.replace(/\s*kr\s*/gi, '').replace(/\./g, '').replace(/\s/g, '').trim();
+    const num = parseInt(cleaned, 10);
+    return isNaN(num) ? null : num;
+  };
+
   const filteredAndSortedAds = useMemo(() => {
     const filtered = allAds.filter(ad => {
       const searchLower = searchQuery.toLowerCase().trim();
@@ -49,10 +58,16 @@ export default function Index() {
     // Sort the filtered results
     return [...filtered].sort((a, b) => {
       switch (sortOption) {
-        case "price-asc":
-          return (a.price_amount ?? Infinity) - (b.price_amount ?? Infinity);
-        case "price-desc":
-          return (b.price_amount ?? 0) - (a.price_amount ?? 0);
+        case "price-asc": {
+          const priceA = parsePriceFromText(a.price_text) ?? Infinity;
+          const priceB = parsePriceFromText(b.price_text) ?? Infinity;
+          return priceA - priceB;
+        }
+        case "price-desc": {
+          const priceA = parsePriceFromText(a.price_text) ?? 0;
+          const priceB = parsePriceFromText(b.price_text) ?? 0;
+          return priceB - priceA;
+        }
         case "newest":
         default:
           return 0; // Already sorted by date from API
