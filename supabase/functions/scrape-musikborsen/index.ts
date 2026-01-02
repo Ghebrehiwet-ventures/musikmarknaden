@@ -397,29 +397,9 @@ Deno.serve(async (req) => {
     // Scrape products
     const products = await scrapeMusikborsen(firecrawlApiKey);
 
-    // Use AI categorization for each product (with rate limiting)
-    const useAI = body.use_ai !== false; // Enable AI by default
-    console.log(`AI categorization: ${useAI ? 'enabled' : 'disabled'}`);
-
-    if (useAI) {
-      console.log('Running AI categorization on products...');
-      let aiCategorized = 0;
-      
-      for (const product of products) {
-        // Only use AI for products that got "other" or uncertain categories
-        if (product.category === 'other' || product.category === 'dj-live') {
-          const aiCategory = await categorizeWithAI(supabaseUrl, product.title, product.image_url);
-          if (aiCategory) {
-            console.log(`AI: "${product.title.substring(0, 30)}..." -> ${aiCategory} (was: ${product.category})`);
-            product.category = aiCategory;
-            aiCategorized++;
-          }
-          // Rate limiting: 300ms between AI calls
-          await delay(300);
-        }
-      }
-      console.log(`AI categorized ${aiCategorized} products`);
-    }
+    // Skip inline AI categorization during scrape - use keyword-based for speed
+    // AI categorization will run as a separate mini-batch after upsert
+    console.log('Using keyword-based categorization during scrape (AI will run as mini-batch after)');
 
     // Prepare ads for upsert
     const now = new Date().toISOString();
@@ -469,10 +449,48 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Run mini-batch AI categorization on "other" ads from this source
+    // This ensures continuous backlog reduction without timeouts
+    const MINI_BATCH_SIZE = 30;
+    const MINI_BATCH_DELAY_MS = 200;
+    let aiUpdated = 0;
+
+    console.log(`Running mini-batch AI categorization on up to ${MINI_BATCH_SIZE} "other" ads...`);
+
+    const { data: otherAds } = await supabase
+      .from('ad_listings_cache')
+      .select('id, title, image_url')
+      .eq('source_id', sourceId)
+      .eq('category', 'other')
+      .eq('is_active', true)
+      .order('created_at', { ascending: true })
+      .limit(MINI_BATCH_SIZE);
+
+    if (otherAds && otherAds.length > 0) {
+      for (const ad of otherAds) {
+        const aiCategory = await categorizeWithAI(supabaseUrl, ad.title, ad.image_url);
+        if (aiCategory && aiCategory !== 'other') {
+          const { error: updateErr } = await supabase
+            .from('ad_listings_cache')
+            .update({ category: aiCategory })
+            .eq('id', ad.id);
+
+          if (!updateErr) {
+            aiUpdated++;
+            console.log(`Mini-batch AI: "${ad.title.substring(0, 30)}..." -> ${aiCategory}`);
+          }
+        }
+        await delay(MINI_BATCH_DELAY_MS);
+      }
+    }
+
+    console.log(`Mini-batch AI updated ${aiUpdated} of ${otherAds?.length || 0} "other" ads`);
+
     const result = {
       success: true,
       ads_found: products.length,
-      ads_new: adsToUpsert.length, // Simplified - actual new count would require more logic
+      ads_new: adsToUpsert.length,
+      ai_updated: aiUpdated,
       source_name: sourceName,
     };
 

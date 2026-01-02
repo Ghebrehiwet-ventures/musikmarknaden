@@ -144,6 +144,52 @@ Svara med JSON.`
   
   console.log('AI response:', content);
 
+  // Label to ID mapping for tolerant parsing
+  const labelToId: Record<string, string> = {};
+  const synonyms: Record<string, string> = {
+    'instrument': 'instrument',
+    'instruments': 'instrument',
+    'gitarr': 'instrument',
+    'bas': 'instrument',
+    'trummor': 'instrument',
+    'förstärkare': 'amplifiers',
+    'amplifier': 'amplifiers',
+    'amp': 'amplifiers',
+    'amps': 'amplifiers',
+    'pedaler': 'pedals-effects',
+    'pedals': 'pedals-effects',
+    'effekter': 'pedals-effects',
+    'effects': 'pedals-effects',
+    'pedal': 'pedals-effects',
+    'synth': 'synth-modular',
+    'synthesizer': 'synth-modular',
+    'modulärt': 'synth-modular',
+    'modular': 'synth-modular',
+    'studio': 'studio',
+    'recording': 'studio',
+    'mikrofon': 'studio',
+    'dj': 'dj-live',
+    'live': 'dj-live',
+    'pa': 'dj-live',
+    'tillbehör': 'accessories-parts',
+    'accessories': 'accessories-parts',
+    'delar': 'accessories-parts',
+    'parts': 'accessories-parts',
+    'mjukvara': 'software-computers',
+    'software': 'software-computers',
+    'datorer': 'software-computers',
+    'computers': 'software-computers',
+    'tjänster': 'services',
+    'services': 'services',
+    'övrigt': 'other',
+    'other': 'other',
+  };
+
+  for (const c of CATEGORIES) {
+    labelToId[c.label.toLowerCase()] = c.id;
+    labelToId[c.id.toLowerCase()] = c.id;
+  }
+
   // Parse JSON from response
   try {
     // Extract JSON from markdown code blocks if present
@@ -154,14 +200,42 @@ Svara med JSON.`
       const jsonStr = jsonMatch[1] || jsonMatch[0];
       const parsed = JSON.parse(jsonStr.trim());
       
-      // Validate category
+      // Try to resolve category from various formats
+      let resolvedCategory: string | null = null;
+      const rawCategory = (parsed.category || '').toLowerCase().trim();
+      
+      // 1. Direct match with valid categories
       const validCategories = CATEGORIES.map(c => c.id);
-      if (validCategories.includes(parsed.category)) {
+      if (validCategories.includes(rawCategory)) {
+        resolvedCategory = rawCategory;
+      }
+      // 2. Match by label
+      else if (labelToId[rawCategory]) {
+        resolvedCategory = labelToId[rawCategory];
+      }
+      // 3. Match by synonyms
+      else if (synonyms[rawCategory]) {
+        resolvedCategory = synonyms[rawCategory];
+      }
+      // 4. Partial match (e.g., "Instrument" -> "instrument")
+      else {
+        for (const c of CATEGORIES) {
+          if (rawCategory.includes(c.id) || c.id.includes(rawCategory)) {
+            resolvedCategory = c.id;
+            break;
+          }
+        }
+      }
+
+      if (resolvedCategory) {
+        console.log(`Resolved category: "${rawCategory}" -> "${resolvedCategory}"`);
         return {
-          category: parsed.category,
+          category: resolvedCategory,
           confidence: parsed.confidence || 'medium',
           reasoning: parsed.reasoning,
         };
+      } else {
+        console.warn(`Could not resolve category: "${rawCategory}"`);
       }
     }
   } catch (e) {

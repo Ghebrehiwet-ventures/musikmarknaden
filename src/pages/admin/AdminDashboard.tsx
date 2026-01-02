@@ -4,16 +4,33 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { adminApi, ScrapingSource, StatsOverview } from '@/lib/adminApi';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, RefreshCw, Database, TrendingUp, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, RefreshCw, Database, TrendingUp, Clock, CheckCircle, XCircle, Sparkles, Play } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { sv } from 'date-fns/locale';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function AdminDashboard() {
   const [sources, setSources] = useState<ScrapingSource[]>([]);
   const [stats, setStats] = useState<StatsOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [categorizing, setCategorizing] = useState(false);
+  const [categorizationProgress, setCategorizationProgress] = useState<{
+    processed: number;
+    updated: number;
+    remaining: number;
+  } | null>(null);
+  const [otherCount, setOtherCount] = useState<number>(0);
   const { toast } = useToast();
+
+  const fetchOtherCount = async () => {
+    const { count } = await supabase
+      .from('ad_listings_cache')
+      .select('*', { count: 'exact', head: true })
+      .eq('category', 'other')
+      .eq('is_active', true);
+    setOtherCount(count || 0);
+  };
 
   const fetchData = async () => {
     try {
@@ -36,7 +53,75 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchData();
+    fetchOtherCount();
   }, []);
+
+  const handleRunAICategorization = async () => {
+    setCategorizing(true);
+    setCategorizationProgress({ processed: 0, updated: 0, remaining: otherCount });
+    
+    let cursor: string | null = null;
+    let totalProcessed = 0;
+    let totalUpdated = 0;
+    let batchCount = 0;
+    const maxBatches = 10; // Limit to 10 batches per click
+
+    try {
+      while (batchCount < maxBatches) {
+        batchCount++;
+        console.log(`Running batch ${batchCount}...`);
+
+        const result = await adminApi.runBatchCategorize({
+          category: 'other',
+          limit: 100,
+          cursor: cursor || undefined,
+        });
+
+        totalProcessed += result.processed;
+        totalUpdated += result.updated;
+        cursor = result.next_cursor;
+
+        // Update progress
+        const newRemaining = Math.max(0, otherCount - totalUpdated);
+        setCategorizationProgress({
+          processed: totalProcessed,
+          updated: totalUpdated,
+          remaining: newRemaining,
+        });
+
+        if (result.completed || !cursor) {
+          toast({
+            title: 'AI-kategorisering klar',
+            description: `Bearbetade ${totalProcessed} annonser, uppdaterade ${totalUpdated}`,
+          });
+          break;
+        }
+
+        // Small delay between batches
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      if (batchCount >= maxBatches && cursor) {
+        toast({
+          title: 'Pausar',
+          description: `Kör ${maxBatches} batchar. Klicka igen för att fortsätta.`,
+        });
+      }
+
+      // Refresh counts
+      fetchOtherCount();
+      fetchData();
+
+    } catch (error) {
+      toast({
+        title: 'AI-kategorisering misslyckades',
+        description: error instanceof Error ? error.message : 'Ett fel uppstod',
+        variant: 'destructive',
+      });
+    } finally {
+      setCategorizing(false);
+    }
+  };
 
   const handleSync = async (sourceId: string) => {
     setSyncing(sourceId);
@@ -122,6 +207,60 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* AI Categorization */}
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-primary" />
+                <CardTitle>AI-kategorisering</CardTitle>
+              </div>
+              <div className="text-2xl font-bold text-primary">{otherCount}</div>
+            </div>
+            <CardDescription>
+              {otherCount > 0 
+                ? `${otherCount} annonser ligger i "Övrigt" och kan kategoriseras med AI`
+                : 'Alla annonser är kategoriserade!'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {categorizationProgress && (
+              <div className="mb-4 p-3 bg-muted rounded-lg">
+                <div className="flex justify-between text-sm mb-2">
+                  <span>Bearbetade: {categorizationProgress.processed}</span>
+                  <span>Uppdaterade: {categorizationProgress.updated}</span>
+                  <span>Kvar: ~{categorizationProgress.remaining}</span>
+                </div>
+                <div className="w-full bg-background rounded-full h-2">
+                  <div 
+                    className="bg-primary h-2 rounded-full transition-all duration-300"
+                    style={{ 
+                      width: `${Math.min(100, (categorizationProgress.updated / Math.max(1, otherCount)) * 100)}%` 
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            <Button
+              onClick={handleRunAICategorization}
+              disabled={categorizing || otherCount === 0}
+              className="w-full"
+            >
+              {categorizing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Kör AI-kategorisering...
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 mr-2" />
+                  Kör AI-kategorisering på "Övrigt"
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
 
         {/* Sources status */}
         <Card>
