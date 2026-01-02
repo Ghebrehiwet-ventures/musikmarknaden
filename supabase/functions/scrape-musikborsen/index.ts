@@ -71,12 +71,45 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   ]
 };
 
+// Decode HTML entities like &amp; -> &
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
+// Short keywords that need word boundaries to avoid false positives
+const SHORT_KEYWORDS = new Set(['amp', 'bas', 'cab', 'dj', 'pa', 'eq', 'sub']);
+
 function categorizeByKeywords(title: string): string {
-  const titleLower = title.toLowerCase();
+  const decoded = decodeHtmlEntities(title);
+  const titleLower = decoded.toLowerCase();
   
+  // Check instrument keywords first (higher priority for things like "G&L bass")
+  for (const keyword of CATEGORY_KEYWORDS['instrument']) {
+    const kw = keyword.toLowerCase();
+    if (SHORT_KEYWORDS.has(kw)) {
+      // Use word boundary for short keywords
+      const regex = new RegExp(`\\b${kw}\\b`, 'i');
+      if (regex.test(titleLower)) return 'instrument';
+    } else if (titleLower.includes(kw)) {
+      return 'instrument';
+    }
+  }
+  
+  // Then check other categories
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (category === 'instrument') continue; // Already checked
     for (const keyword of keywords) {
-      if (titleLower.includes(keyword.toLowerCase())) {
+      const kw = keyword.toLowerCase();
+      if (SHORT_KEYWORDS.has(kw)) {
+        const regex = new RegExp(`\\b${kw}\\b`, 'i');
+        if (regex.test(titleLower)) return category;
+      } else if (titleLower.includes(kw)) {
         return category;
       }
     }
