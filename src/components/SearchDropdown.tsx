@@ -1,16 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import { Search, Clock, TrendingUp, X, SlidersHorizontal, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, Clock, TrendingUp, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { useRecentSearches } from "@/hooks/useRecentSearches";
 import { POPULAR_BRANDS, POPULAR_PRODUCT_TYPES } from "@/lib/popularSearches";
-
-export interface Filters {
-  minPrice: number | null;
-  maxPrice: number | null;
-  location: string;
-}
 
 interface SearchDropdownProps {
   searchQuery: string;
@@ -18,8 +11,6 @@ interface SearchDropdownProps {
   onSubmit?: (query: string) => void;
   className?: string;
   compact?: boolean;
-  filters?: Filters;
-  onFiltersChange?: (filters: Filters) => void;
 }
 
 export function SearchDropdown({ 
@@ -28,23 +19,11 @@ export function SearchDropdown({
   onSubmit, 
   className, 
   compact,
-  filters = { minPrice: null, maxPrice: null, location: "" },
-  onFiltersChange,
 }: SearchDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
-  const [minPriceInput, setMinPriceInput] = useState(filters.minPrice?.toString() || "");
-  const [maxPriceInput, setMaxPriceInput] = useState(filters.maxPrice?.toString() || "");
-  const [locationInput, setLocationInput] = useState(filters.location);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { recentSearches, addRecentSearch, clearRecentSearches } = useRecentSearches();
-
-  const activeFilterCount = [
-    filters.minPrice !== null,
-    filters.maxPrice !== null,
-    filters.location.trim() !== "",
-  ].filter(Boolean).length;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -91,32 +70,6 @@ export function SearchDropdown({
   const handleClear = () => {
     onSearch("");
     inputRef.current?.focus();
-  };
-
-  const applyFilters = () => {
-    onFiltersChange?.({
-      minPrice: minPriceInput ? parseInt(minPriceInput, 10) : null,
-      maxPrice: maxPriceInput ? parseInt(maxPriceInput, 10) : null,
-      location: locationInput.trim(),
-    });
-  };
-
-  const clearFilters = () => {
-    setMinPriceInput("");
-    setMaxPriceInput("");
-    setLocationInput("");
-    onFiltersChange?.({
-      minPrice: null,
-      maxPrice: null,
-      location: "",
-    });
-  };
-
-  const handleFilterKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      applyFilters();
-    }
   };
 
   return (
@@ -215,90 +168,6 @@ export function SearchDropdown({
             </div>
           </div>
 
-          {/* Advanced filters toggle */}
-          <div className="border-t border-border">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center justify-between w-full p-3 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <SlidersHorizontal className="h-4 w-4" />
-                <span>Avancerade filter</span>
-                {activeFilterCount > 0 && (
-                  <Badge variant="secondary" className="text-xs px-1.5 py-0">
-                    {activeFilterCount}
-                  </Badge>
-                )}
-              </div>
-              {showFilters ? (
-                <ChevronUp className="h-4 w-4" />
-              ) : (
-                <ChevronDown className="h-4 w-4" />
-              )}
-            </button>
-
-            {showFilters && (
-              <div className="p-3 pt-0 space-y-3">
-                {/* Price range */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Prisintervall (kr)
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      placeholder="Min"
-                      value={minPriceInput}
-                      onChange={(e) => setMinPriceInput(e.target.value)}
-                      onKeyDown={handleFilterKeyDown}
-                      className="h-8 text-sm"
-                    />
-                    <span className="text-muted-foreground text-sm">–</span>
-                    <Input
-                      type="number"
-                      placeholder="Max"
-                      value={maxPriceInput}
-                      onChange={(e) => setMaxPriceInput(e.target.value)}
-                      onKeyDown={handleFilterKeyDown}
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                </div>
-
-                {/* Location */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">
-                    Plats
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder="T.ex. Stockholm, Göteborg..."
-                    value={locationInput}
-                    onChange={(e) => setLocationInput(e.target.value)}
-                    onKeyDown={handleFilterKeyDown}
-                    className="h-8 text-sm"
-                  />
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2 pt-1">
-                  <Button onClick={applyFilters} size="sm" className="h-8 flex-1">
-                    Filtrera
-                  </Button>
-                  {activeFilterCount > 0 && (
-                    <Button
-                      onClick={clearFilters}
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>
