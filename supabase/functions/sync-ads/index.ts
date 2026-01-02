@@ -9,7 +9,7 @@ const PARSEBOT_API_BASE = 'https://api.parse.bot/scraper/0f1f1694-68f5-4a07-8498
 const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v1/scrape';
 
 // All categories from Gearloop
-const CATEGORIES = [
+const GEARLOOP_CATEGORIES = [
   'akustiska-gitarrer-alla',
   'basar-alla',
   'blasinstrument-alla',
@@ -52,6 +52,55 @@ const CATEGORIES = [
   'promotionfoto-alla',
   'litteratur-noter-alla',
 ];
+
+// Map Gearloop categories to internal categories
+const GEARLOOP_CATEGORY_MAP: Record<string, string> = {
+  'akustiska-gitarrer-alla': 'instrument',
+  'basar-alla': 'instrument',
+  'blasinstrument-alla': 'instrument',
+  'elgitarrer-alla': 'instrument',
+  'strakinstrument-alla': 'instrument',
+  'klaviatur-alla': 'instrument',
+  'trummor-percussion-alla': 'instrument',
+  'synthar-alla': 'synth-modular',
+  'eurorack-alla': 'synth-modular',
+  'service-reparation-alla': 'services',
+  'dj-utrustning-alla': 'dj-live',
+  'pedaler-effekter-alla': 'pedals-effects',
+  'gitarrforstarkare-alla': 'amplifiers',
+  'basf%C3%B6rstarkare-alla': 'amplifiers',
+  'ovriga-forstarkare-alla': 'amplifiers',
+  'mikrofoner-alla': 'studio',
+  'pa-Live-alla': 'dj-live',
+  'api-500-series-alla': 'studio',
+  'studio-scenutrustning-alla': 'studio',
+  'datorer-alla': 'software-computers',
+  'mjukvara-plug-ins-alla': 'software-computers',
+  'reservdelar-ovrigt-alla': 'accessories-parts',
+  'studiomobler-alla': 'studio',
+  'sangare-alla': 'services',
+  'basist-alla': 'services',
+  'gitarrist-alla': 'services',
+  'keyboardist-alla': 'services',
+  'klassisk-alla': 'services',
+  'trummis-alla': 'services',
+  'blasare-alla': 'services',
+  'ovriga-alla': 'other',
+  'replokaler-alla': 'services',
+  'studiolokaler-alla': 'services',
+  'lektioner-alla': 'services',
+  'kompositorer-alla': 'services',
+  'producenter-alla': 'services',
+  'mastering-alla': 'services',
+  'distribution-alla': 'services',
+  'artwork-design-alla': 'services',
+  'promotionfoto-alla': 'services',
+  'litteratur-noter-alla': 'other',
+};
+
+function mapGearloopCategory(externalCategory: string): string {
+  return GEARLOOP_CATEGORY_MAP[externalCategory] || 'other';
+}
 
 interface Ad {
   title: string;
@@ -117,9 +166,9 @@ async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any): P
   const allAds: Ad[] = [];
   const seenUrls = new Set<string>();
 
-  console.log(`Starting to fetch ads from ${CATEGORIES.length} categories...`);
+  console.log(`Starting to fetch ads from ${GEARLOOP_CATEGORIES.length} categories...`);
 
-  for (const category of CATEGORIES) {
+  for (const category of GEARLOOP_CATEGORIES) {
     console.log(`Fetching category: ${category}`);
     
     try {
@@ -143,7 +192,7 @@ async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any): P
           ad_url: ad.ad_url,
           ad_path: ad.ad_path,
           title: ad.title,
-          category: ad.category,
+          category: mapGearloopCategory(category), // Map to internal category
           location: ad.location,
           date: ad.date,
           price_text: ad.price_text,
