@@ -8,3 +8,9 @@ verify_jwt = false
 
 [functions.sync-ads]
 verify_jwt = false
+
+[functions.admin-sources]
+verify_jwt = false
+
+[functions.scrape-musikborsen]
+verify_jwt = false
