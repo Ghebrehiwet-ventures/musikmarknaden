@@ -1,15 +1,23 @@
 import { Guitar, User, PlusCircle } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { MobileMenu } from "./MobileMenu";
-import { SearchDropdown } from "./SearchDropdown";
+import { SearchDropdown, Filters } from "./SearchDropdown";
 
 interface HeaderProps {
   onCategorySelect?: (categoryId: string | null) => void;
   searchQuery?: string;
   onSearch?: (query: string) => void;
+  filters?: Filters;
+  onFiltersChange?: (filters: Filters) => void;
 }
 
-export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderProps) {
+export function Header({ 
+  onCategorySelect, 
+  searchQuery = "", 
+  onSearch,
+  filters = { minPrice: null, maxPrice: null, location: "" },
+  onFiltersChange,
+}: HeaderProps) {
   const handleSearch = (query: string) => {
     onSearch?.(query);
   };
@@ -32,6 +40,8 @@ export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderP
           <SearchDropdown 
             searchQuery={searchQuery} 
             onSearch={handleSearch}
+            filters={filters}
+            onFiltersChange={onFiltersChange}
             className="w-full max-w-md"
             compact
           />
@@ -68,6 +78,8 @@ export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderP
         <SearchDropdown 
           searchQuery={searchQuery} 
           onSearch={handleSearch}
+          filters={filters}
+          onFiltersChange={onFiltersChange}
           className="w-full"
         />
       </div>
