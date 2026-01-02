@@ -224,33 +224,39 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
 
               <p className="mt-4 text-3xl md:text-4xl font-bold text-primary">{priceText}</p>
 
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                {location && (
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <MapPin className="h-4 w-4" />
-                    <span>{location}</span>
-                  </div>
-                )}
-                
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {/* Category badge - always show */}
+                {(() => {
+                  const internalCat = ad?.category && CATEGORIES.some(c => c.id === ad.category)
+                    ? ad.category
+                    : mapToInternalCategory(ad?.title);
+                  const catInfo = CATEGORIES.find(c => c.id === internalCat);
+                  if (catInfo) {
+                    const Icon = catInfo.icon;
+                    return (
+                      <Badge variant="secondary" className="gap-1.5">
+                        <Icon className="h-3 w-3" />
+                        {catInfo.label}
+                      </Badge>
+                    );
+                  }
+                  return null;
+                })()}
+
                 {details?.condition && (
-                  <Badge variant="secondary" className="gap-1">
+                  <Badge variant="outline" className="gap-1">
                     <CheckCircle className="h-3 w-3" />
                     {details.condition}
                   </Badge>
                 )}
               </div>
 
-              {(() => {
-                // Get valid internal category (handle legacy URL slugs)
-                const internalCat = ad?.category && CATEGORIES.some(c => c.id === ad.category)
-                  ? ad.category
-                  : mapToInternalCategory(ad?.title);
-                return internalCat && internalCat !== 'other' ? (
-                  <Badge variant="outline" className="mt-3 bg-primary/10 text-primary border-primary/20">
-                    {getCategoryLabel(internalCat)}
-                  </Badge>
-                ) : null;
-              })()}
+              {location && (
+                <div className="mt-3 flex items-center gap-1.5 text-muted-foreground text-sm">
+                  <MapPin className="h-4 w-4" />
+                  <span>{location}</span>
+                </div>
+              )}
             </div>
 
             {/* Description with scroll */}
