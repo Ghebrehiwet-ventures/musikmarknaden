@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Menu, X, ChevronRight, Music } from "lucide-react";
+import { Menu, ChevronRight, Guitar } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -53,7 +53,7 @@ export function MobileMenu({ onCategorySelect }: MobileMenuProps) {
       <SheetContent side="left" className="w-[300px] sm:w-[350px] p-0">
         <SheetHeader className="p-4 border-b border-border">
           <SheetTitle className="flex items-center gap-2 text-base">
-            <Music className="h-4 w-4" />
+            <Guitar className="h-4 w-4" />
             Musikmarknaden
           </SheetTitle>
         </SheetHeader>
@@ -67,14 +67,6 @@ export function MobileMenu({ onCategorySelect }: MobileMenuProps) {
               className="flex items-center justify-between py-2 text-sm hover:text-primary transition-colors"
             >
               <span>Startsida</span>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </Link>
-            <Link
-              to="/search"
-              onClick={() => setIsOpen(false)}
-              className="flex items-center justify-between py-2 text-sm hover:text-primary transition-colors"
-            >
-              <span>Avancerad sökning</span>
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </Link>
           </div>
