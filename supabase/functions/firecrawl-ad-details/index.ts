@@ -6,6 +6,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Detect source from URL
+function getSourceType(url: string): 'musikborsen' | 'gearloop' | 'dlxmusic' | 'unknown' {
+  if (url.includes('musikborsen.se')) return 'musikborsen';
+  if (url.includes('gearloop.se')) return 'gearloop';
+  if (url.includes('dlxmusic.se')) return 'dlxmusic';
+  return 'unknown';
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -25,6 +33,8 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const sourceType = getSourceType(ad_url);
 
     // Check cache first
     const { data: cached } = await supabase
@@ -70,7 +80,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('× Cache miss - scraping from Firecrawl:', ad_url);
+    console.log(`× Cache miss - scraping from Firecrawl [${sourceType}]:`, ad_url);
     const scrapeStart = Date.now();
 
     const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
@@ -82,7 +92,7 @@ serve(async (req) => {
       body: JSON.stringify({
         url: ad_url,
         formats: ['markdown', 'html'],
-        onlyMainContent: true,
+        onlyMainContent: false, // Get full page for better image extraction
       }),
     });
 
@@ -97,13 +107,13 @@ serve(async (req) => {
     }
 
     const scrapeTime = Date.now() - scrapeStart;
-    console.log(`Scrape successful in ${scrapeTime}ms, parsing ad details`);
+    console.log(`Scrape successful in ${scrapeTime}ms, parsing ad details for source: ${sourceType}`);
 
     const markdown = data.data?.markdown || data.markdown || '';
     const html = data.data?.html || data.html || '';
     const metadata = data.data?.metadata || data.metadata || {};
 
-    const adDetails = parseGearloopAd(markdown, html, metadata);
+    const adDetails = parseAdDetails(markdown, html, metadata, sourceType);
 
     console.log('Parsed ad details:', adDetails);
 
@@ -144,19 +154,35 @@ serve(async (req) => {
   }
 });
 
-function parseGearloopAd(markdown: string, html: string, metadata: Record<string, unknown>) {
-  const title = (metadata.title as string)?.split(' - ')[0] || extractTitle(markdown) || 'Okänd titel';
-  const description = extractDescription(markdown);
+// Main parser - routes to source-specific logic
+function parseAdDetails(
+  markdown: string, 
+  html: string, 
+  metadata: Record<string, unknown>,
+  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'unknown'
+) {
+  const title = (metadata.title as string)?.split(' - ')[0]?.split(' | ')[0] || extractTitle(markdown) || 'Okänd titel';
   
-  // Extract price - get the first valid price
+  // Extract description with source-specific cleaning
+  const description = sourceType === 'musikborsen' 
+    ? extractMusikborsenDescription(markdown)
+    : extractGearloopDescription(markdown);
+  
+  // Extract price
   const priceMatch = markdown.match(/(\d[\d\s]*):?-?\s*kr/i) || markdown.match(/(\d[\d\s]*)\s*kr/i);
   const priceText = priceMatch ? `${priceMatch[1].replace(/\s/g, '')} kr` : null;
   const priceAmount = priceMatch ? parseInt(priceMatch[1].replace(/\s/g, ''), 10) : null;
   
-  const location = extractLocation(markdown);
-  const images = extractImages(html);
+  // Extract location with source-specific patterns
+  const location = sourceType === 'musikborsen'
+    ? extractMusikborsenLocation(markdown)
+    : extractLocation(markdown);
+  
+  // Extract images with source-specific patterns
+  const images = extractImages(html, sourceType);
+  
   const contactInfo = extractContactInfo(markdown, html);
-  const sellerInfo = extractSellerInfo(markdown);
+  const sellerInfo = sourceType === 'gearloop' ? extractSellerInfo(markdown) : undefined;
   const condition = extractCondition(markdown);
 
   return {
@@ -179,39 +205,73 @@ function extractTitle(markdown: string): string {
   return firstLine?.trim() || '';
 }
 
-function extractDescription(markdown: string): string {
+// Musikbörsen-specific description extraction
+function extractMusikborsenDescription(markdown: string): string {
   const lines = markdown.split('\n');
   const contentLines: string[] = [];
   
-  // Skip patterns - things we don't want in description
+  // Patterns specific to Musikbörsen junk
   const skipPatterns = [
-    /^!\[/,                              // Markdown images
-    /^\[.*\]\(.*gearloop/i,              // Links to gearloop
-    /^- \[/,                             // List items with links
-    /sveriges marknadsplats/i,           // Footer text
-    /om gearloop/i,
-    /^support$/i,
-    /^villkor$/i,
-    /^tips$/i,
-    /medlem sedan/i,
-    /visningar:/i,
-    /skickas \*\*ej\*\*/i,
-    /^\d{1,2}:\d{2}$/,                   // Time stamps like 11:06
-    /^\d+\s*kr\d/,                       // Price with date attached like "1 750 kr9 dec"
-    /^\d[\d\s]*kr\d/i,                   // Price history patterns
-    /^×$/,                               // Standalone × character
-    /^x$/i,                              // Standalone x character
-    /^Säljes$/i,                         // Just "Säljes"
-    /^Köpes$/i,                          // Just "Köpes"
-    /^\d{1,2}\s+(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)$/i, // Date like "16 nov"
-    /^\d[\d\s]*:-?$/,                    // Just price like "1 400:-"
-    /^Skick:/i,                          // Condition line (shown separately)
-    /^Ny medlem$/i,                      // Member status
+    /vi använder cookies/i,
+    /integritetsinställningar/i,
+    /manage consent/i,
+    /nödvändiga cookies/i,
+    /analytiska cookies/i,
+    /reklam-cookies/i,
+    /\| kaka \|/i,
+    /\| varaktighet \|/i,
+    /\| beskrivning \|/i,
+    /^\|[\s-]+\|/,                         // Table separators
+    /^\|.*\|.*\|$/,                        // Table rows
+    /gdpr cookie/i,
+    /cookielawinfo/i,
+    /cookie consent/i,
+    /alltid aktiverad/i,
+    /spara & acceptera/i,
+    /powered by.*cookieyes/i,
+    /cookieyes/i,
+    /stäng$/i,
+    /fält markerade med/i,
+    /om du är en människa/i,
+    /^\*\\$/,                              // Escaped asterisk patterns
+    /^\\?\*$/,                             // Just asterisks
+    /namn\s*\\\*$/i,                       // Form field labels
+    /e-post\s*\\\*$/i,
+    /telefon$/i,
+    /köp \/ fråga/i,
+    /^övriga$/i,
+    /^others$/i,
+    /^analyser$/i,
+    /^analytics$/i,
+    /^reklam$/i,
+    /^advertisement$/i,
+    /^nödvändiga$/i,
+    /webbläsare/i,
+    /tredjepartscookies/i,
+    /surfupplevelse/i,
+    /denna cookie/i,
+    /^!\[/,                                // Markdown images
+    /^\[.*\]\(.*\)/,                       // Markdown links
+    /^- \[/,                               // List items with links
+    /no description/i,
+    /^session$/i,
+    /^\d+ (year|month|day|minut)/i,
   ];
+  
+  let inCookieSection = false;
   
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
+    
+    // Detect start of cookie section
+    if (/vi använder cookies/i.test(trimmed)) {
+      inCookieSection = true;
+      continue;
+    }
+    
+    // Skip everything after cookie section starts
+    if (inCookieSection) continue;
     
     // Skip if matches any skip pattern
     const shouldSkip = skipPatterns.some(p => p.test(trimmed));
@@ -220,8 +280,12 @@ function extractDescription(markdown: string): string {
     // Skip pure navigation/header elements
     if (trimmed.startsWith('#') || trimmed === '|' || trimmed.startsWith('---')) continue;
     
-    // Skip price history lines (price followed by date)
-    if (/^\d[\d\s]*kr\s*\d{1,2}\s*(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)/i.test(trimmed)) continue;
+    // Skip price lines (shown separately)
+    if (/^\d[\d\s.,]*\s*kr$/i.test(trimmed)) continue;
+    
+    // Skip E-post/Telefon contact lines (shown separately)
+    if (/^e-post:/i.test(trimmed)) continue;
+    if (/^telefon:/i.test(trimmed)) continue;
     
     contentLines.push(trimmed);
   }
@@ -229,14 +293,75 @@ function extractDescription(markdown: string): string {
   let desc = contentLines.join('\n').trim();
   
   // Clean up markdown artifacts
-  desc = desc.replace(/!\[\]\([^)]+\)/g, '');           // Remove empty markdown images
-  desc = desc.replace(/×!/g, '');                       // Remove weird artifacts
-  desc = desc.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');  // Convert links to text
-  desc = desc.replace(/\*\*/g, '');                     // Remove bold markers
-  desc = desc.replace(/^×\n/gm, '');                    // Remove standalone × on lines
-  desc = desc.replace(/\n×$/gm, '');                    // Remove trailing ×
+  desc = desc.replace(/!\[\]\([^)]+\)/g, '');
+  desc = desc.replace(/!\[[^\]]*\]\([^)]+\)/g, '');
+  desc = desc.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  desc = desc.replace(/\*\*/g, '');
+  desc = desc.replace(/\\\*/g, '');
+  desc = desc.replace(/\\+/g, '');
   
   // Remove duplicate consecutive lines
+  const uniqueLines = desc.split('\n').filter((line, i, arr) => i === 0 || line !== arr[i - 1]);
+  desc = uniqueLines.join('\n');
+  
+  // Final cleanup - remove any remaining cookie-related text that slipped through
+  desc = desc.replace(/E-post:.*Köp \/ Fråga \/ Meddelande/gs, '');
+  
+  return desc || 'Ingen beskrivning tillgänglig';
+}
+
+// Gearloop-specific description extraction
+function extractGearloopDescription(markdown: string): string {
+  const lines = markdown.split('\n');
+  const contentLines: string[] = [];
+  
+  const skipPatterns = [
+    /^!\[/,
+    /^\[.*\]\(.*gearloop/i,
+    /^- \[/,
+    /sveriges marknadsplats/i,
+    /om gearloop/i,
+    /^support$/i,
+    /^villkor$/i,
+    /^tips$/i,
+    /medlem sedan/i,
+    /visningar:/i,
+    /skickas \*\*ej\*\*/i,
+    /^\d{1,2}:\d{2}$/,
+    /^\d+\s*kr\d/,
+    /^\d[\d\s]*kr\d/i,
+    /^×$/,
+    /^x$/i,
+    /^Säljes$/i,
+    /^Köpes$/i,
+    /^\d{1,2}\s+(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)$/i,
+    /^\d[\d\s]*:-?$/,
+    /^Skick:/i,
+    /^Ny medlem$/i,
+  ];
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    
+    const shouldSkip = skipPatterns.some(p => p.test(trimmed));
+    if (shouldSkip) continue;
+    
+    if (trimmed.startsWith('#') || trimmed === '|' || trimmed.startsWith('---')) continue;
+    if (/^\d[\d\s]*kr\s*\d{1,2}\s*(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)/i.test(trimmed)) continue;
+    
+    contentLines.push(trimmed);
+  }
+  
+  let desc = contentLines.join('\n').trim();
+  
+  desc = desc.replace(/!\[\]\([^)]+\)/g, '');
+  desc = desc.replace(/×!/g, '');
+  desc = desc.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  desc = desc.replace(/\*\*/g, '');
+  desc = desc.replace(/^×\n/gm, '');
+  desc = desc.replace(/\n×$/gm, '');
+  
   const uniqueLines = desc.split('\n').filter((line, i, arr) => i === 0 || line !== arr[i - 1]);
   desc = uniqueLines.join('\n');
   
@@ -263,22 +388,60 @@ function extractLocation(markdown: string): string {
   return '';
 }
 
-function extractImages(html: string): string[] {
-  const images: string[] = [];
-  const urlRegex = /https:\/\/assets\.gearloop\.se\/files\/\d+\.(?:jpg|jpeg|png|gif|webp)/gi;
-  let match;
+function extractMusikborsenLocation(markdown: string): string {
+  // Musikbörsen often has location in contact info like "Musikbörsen i Göteborg"
+  const mbLocationMatch = markdown.match(/musikbörsen\s+(?:i\s+)?([A-ZÅÄÖ][a-zåäö]+)/i);
+  if (mbLocationMatch) return mbLocationMatch[1];
   
-  while ((match = urlRegex.exec(html)) !== null) {
-    const url = match[0];
-    if (!images.includes(url)) {
-      images.push(url);
+  // Look in title or near "hos" keyword
+  const hosMatch = markdown.match(/hos\s+musikbörsen\s+(?:i\s+)?([A-ZÅÄÖ][a-zåäö]+)/i);
+  if (hosMatch) return hosMatch[1];
+  
+  // Fall back to general location extraction
+  return extractLocation(markdown);
+}
+
+function extractImages(html: string, sourceType: string): string[] {
+  const images: string[] = [];
+  
+  if (sourceType === 'musikborsen') {
+    // Musikbörsen uses WordPress uploads
+    const mbRegex = /https?:\/\/musikborsen\.se\/wp-content\/uploads\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
+    let match;
+    while ((match = mbRegex.exec(html)) !== null) {
+      const url = match[0];
+      // Skip tiny thumbnails
+      if (!url.includes('-150x') && !url.includes('-100x') && !images.includes(url)) {
+        images.push(url);
+      }
+    }
+  } else if (sourceType === 'gearloop') {
+    // Gearloop uses their CDN
+    const glRegex = /https:\/\/assets\.gearloop\.se\/files\/\d+\.(?:jpg|jpeg|png|gif|webp)/gi;
+    let match;
+    while ((match = glRegex.exec(html)) !== null) {
+      const url = match[0];
+      if (!images.includes(url)) {
+        images.push(url);
+      }
+    }
+  } else {
+    // Generic image extraction
+    const genericRegex = /https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
+    let match;
+    while ((match = genericRegex.exec(html)) !== null) {
+      const url = match[0];
+      // Skip common assets that aren't product images
+      if (!url.includes('logo') && !url.includes('icon') && !url.includes('avatar') && !images.includes(url)) {
+        images.push(url);
+      }
     }
   }
   
   return images;
 }
 
-function extractContactInfo(markdown: string, html: string): { email?: string; phone?: string } {
+function extractContactInfo(markdown: string, _html: string): { email?: string; phone?: string } {
   const contactInfo: { email?: string; phone?: string } = {};
   
   const emailMatch = markdown.match(/[\w.-]+@[\w.-]+\.\w+/);
@@ -286,9 +449,19 @@ function extractContactInfo(markdown: string, html: string): { email?: string; p
     contactInfo.email = emailMatch[0];
   }
   
-  const phoneMatch = markdown.match(/(?:0\d{1,3}[-\s]?\d{2,3}[-\s]?\d{2}[-\s]?\d{2}|\+46[-\s]?\d{1,3}[-\s]?\d{2,3}[-\s]?\d{2}[-\s]?\d{2})/);
-  if (phoneMatch) {
-    contactInfo.phone = phoneMatch[0];
+  // More flexible phone matching for Swedish numbers
+  const phonePatterns = [
+    /\+46[-\s]?\d{1,3}[-\s]?\d{2,3}[-\s]?\d{2}[-\s]?\d{2}/,
+    /0\d{1,3}[-\s]?\d{2,3}[-\s]?\d{2}[-\s]?\d{2}/,
+    /0\d{2,3}-\d{2}\s?\d{2}\s?\d{2}/,
+  ];
+  
+  for (const pattern of phonePatterns) {
+    const match = markdown.match(pattern);
+    if (match) {
+      contactInfo.phone = match[0];
+      break;
+    }
   }
   
   return contactInfo;
@@ -310,7 +483,6 @@ function extractSellerInfo(markdown: string): { name?: string; username?: string
     }
   }
   
-  // Clean up seller info - remove if it's just artifacts
   if (name && /^[×x]$/i.test(name)) name = undefined;
   if (username && /^[×x]$/i.test(username)) username = undefined;
   
