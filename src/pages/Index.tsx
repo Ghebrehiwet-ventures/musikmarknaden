@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/Header";
 import { CategoryBar } from "@/components/CategoryBar";
-import { AdvancedFilters, Filters } from "@/components/AdvancedFilters";
 import { AdGrid } from "@/components/AdGrid";
 import { AdList } from "@/components/AdList";
 import { AdDetailModal } from "@/components/AdDetailModal";
@@ -11,6 +10,7 @@ import { ViewToggle, ViewMode } from "@/components/ViewToggle";
 import { SortSelect, SortOption } from "@/components/SortSelect";
 import { fetchAdListings, Ad } from "@/lib/api";
 import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
+import { Filters } from "@/components/SearchDropdown";
 
 export default function Index() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -110,17 +110,14 @@ export default function Index() {
           onCategorySelect={handleCategoryChange} 
           searchQuery={searchQuery}
           onSearch={handleSearch}
+          filters={advancedFilters}
+          onFiltersChange={handleAdvancedFiltersChange}
         />
       </div>
       
       <CategoryBar
         selectedCategory={selectedCategory}
         onCategoryChange={handleCategoryChange}
-      />
-      
-      <AdvancedFilters 
-        filters={advancedFilters} 
-        onFiltersChange={handleAdvancedFiltersChange} 
       />
       
       <main className="max-w-[1000px] mx-auto px-4 py-3">
