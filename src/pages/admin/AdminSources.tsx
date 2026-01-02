@@ -15,7 +15,6 @@ import { formatDistanceToNow } from 'date-fns';
 import { sv } from 'date-fns/locale';
 
 const SOURCE_TYPES = [
-  { value: 'parsebot', label: 'Parse.bot API' },
   { value: 'firecrawl_list', label: 'Firecrawl (listsida)' },
   { value: 'firecrawl_crawl', label: 'Firecrawl (crawl)' },
 ];
