@@ -17,7 +17,7 @@ export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderP
   return (
     <header className="border-b border-border bg-background">
       {/* Main header row */}
-      <div className="max-w-[1000px] w-full px-4 flex h-14 items-center gap-4"> 
+      <div className="max-w-[1000px] mx-auto px-4 flex h-14 items-center gap-4">
         {/* Left: Hamburger + Logo */}
         <div className="flex items-center gap-3">
           <MobileMenu onCategorySelect={onCategorySelect} />

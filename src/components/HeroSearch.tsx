@@ -9,7 +9,7 @@ interface HeroSearchProps {
 export function HeroSearch({ searchQuery, onSearch }: HeroSearchProps) {
   return (
     <div className="border-b border-border py-3">
-      <div className="max-w-[1000px] w-full px-4">
+      <div className="max-w-[1000px] mx-auto px-4">
         <div className="relative max-w-md">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input

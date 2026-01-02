@@ -126,9 +126,9 @@ export default function Index() {
         onCategoryChange={handleCategoryChange}
       />
       
-      <main className="max-w-[1000px] w-full px-4 py-3">
+      <main className="max-w-[1000px] mx-auto px-4 py-3 text-left">
         <div className="flex items-center justify-between mb-2 text-sm text-muted-foreground">
-          <span>{totalAds} annonser{searchQuery && ` för "${searchQuery}"`}</span>
+          <span className="text-left">{totalAds} annonser{searchQuery && ` för "${searchQuery}"`}</span>
           <div className="flex items-center gap-2">
             <SortSelect value={sortOption} onChange={setSortOption} />
             <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
