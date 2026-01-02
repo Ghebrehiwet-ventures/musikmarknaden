@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useRecentSearches } from "@/hooks/useRecentSearches";
 import { POPULAR_BRANDS, POPULAR_PRODUCT_TYPES } from "@/lib/popularSearches";
-import { Link } from "react-router-dom";
+
 
 interface SearchDropdownProps {
   searchQuery: string;
@@ -163,15 +163,11 @@ export function SearchDropdown({ searchQuery, onSearch, onSubmit, className, com
             </div>
           </div>
 
-          {/* Advanced search link */}
-          <Link
-            to="/search"
-            className="flex items-center gap-2 p-3 text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            onClick={() => setIsOpen(false)}
-          >
+          {/* Filter hint */}
+          <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground border-t border-border">
             <SlidersHorizontal className="h-4 w-4" />
-            <span>Avancerad sökning</span>
-          </Link>
+            <span>Använd kategorierna ovan för att filtrera</span>
+          </div>
         </div>
       )}
     </div>

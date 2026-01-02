@@ -1,4 +1,4 @@
-import { Music, User, PlusCircle } from "lucide-react";
+import { Guitar, User, PlusCircle } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { MobileMenu } from "./MobileMenu";
 import { SearchDropdown } from "./SearchDropdown";
@@ -22,7 +22,7 @@ export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderP
         <div className="flex items-center gap-3">
           <MobileMenu onCategorySelect={onCategorySelect} />
           <a href="/" className="flex items-center gap-2 font-semibold text-sm hover:text-muted-foreground transition-colors">
-            <Music className="h-5 w-5" />
+            <Guitar className="h-5 w-5" />
             <span className="hidden sm:inline">Musikmarknaden</span>
           </a>
         </div>
