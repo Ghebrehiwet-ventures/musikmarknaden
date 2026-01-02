@@ -8,6 +8,21 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 
+// Helper to detect source from URL
+function getSourceInfo(url: string): { name: string; domain: string } {
+  if (url.includes('musikborsen.se')) return { name: 'Musikbörsen', domain: 'musikborsen.se' };
+  if (url.includes('gearloop.se')) return { name: 'Gearloop', domain: 'gearloop.se' };
+  if (url.includes('dlxmusic.se')) return { name: 'DLX Music', domain: 'dlxmusic.se' };
+  if (url.includes('blocketgitarr.se')) return { name: 'Blocket Gitarr', domain: 'blocketgitarr.se' };
+  try {
+    const domain = new URL(url).hostname.replace('www.', '');
+    const name = domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+    return { name, domain };
+  } catch {
+    return { name: 'Källa', domain: '' };
+  }
+}
+
 interface AdDetailModalProps {
   ad: Ad | null;
   open: boolean;
@@ -73,6 +88,11 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [loadingTime, setLoadingTime] = useState(0);
   const queryClient = useQueryClient();
+  
+  // Get source info from URL
+  const sourceInfo = useMemo(() => 
+    ad?.ad_url ? getSourceInfo(ad.ad_url) : { name: 'Källa', domain: '' }
+  , [ad?.ad_url]);
 
   // Check if data is already cached
   const isCached = ad?.ad_url 
@@ -236,7 +256,7 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     {loadingTime >= 5 
                       ? "Det tar lite längre..." 
-                      : "Hämtar från Gearloop..."}
+                      : "Hämtar detaljer..."}
                   </span>
                 )}
               </div>
@@ -308,7 +328,7 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
               <Button className="w-full" size="lg" asChild>
                 <a href={ad?.ad_url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-4 w-4 mr-2" />
-                  Visa på Gearloop
+                  Visa på {sourceInfo.name}
                 </a>
               </Button>
             </div>
