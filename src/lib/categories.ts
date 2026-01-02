@@ -1,23 +1,41 @@
 // V1 Category Taxonomy for Musical Gear Marketplace
 // This is the locked category structure - do not modify without versioning
 
+import { 
+  Guitar, 
+  Volume2, 
+  SlidersHorizontal, 
+  Mic, 
+  Disc3, 
+  Piano, 
+  Monitor, 
+  Cable, 
+  Wrench, 
+  MoreHorizontal,
+  LayoutGrid,
+  LucideIcon
+} from "lucide-react";
+
 export interface Category {
   id: string;
   label: string;
+  icon: LucideIcon;
 }
 
 export const CATEGORIES: Category[] = [
-  { id: "instrument", label: "Instrument" },
-  { id: "amplifiers", label: "Förstärkare" },
-  { id: "pedals-effects", label: "Pedaler & Effekter" },
-  { id: "studio", label: "Studio" },
-  { id: "dj-live", label: "DJ & Live" },
-  { id: "synth-modular", label: "Synth & Modulärt" },
-  { id: "software-computers", label: "Mjukvara & Datorer" },
-  { id: "accessories-parts", label: "Tillbehör & Delar" },
-  { id: "services", label: "Tjänster" },
-  { id: "other", label: "Övrigt" },
+  { id: "instrument", label: "Instrument", icon: Guitar },
+  { id: "amplifiers", label: "Förstärkare", icon: Volume2 },
+  { id: "pedals-effects", label: "Pedaler & Effekter", icon: SlidersHorizontal },
+  { id: "studio", label: "Studio", icon: Mic },
+  { id: "dj-live", label: "DJ & Live", icon: Disc3 },
+  { id: "synth-modular", label: "Synth & Modulärt", icon: Piano },
+  { id: "software-computers", label: "Mjukvara & Datorer", icon: Monitor },
+  { id: "accessories-parts", label: "Tillbehör & Delar", icon: Cable },
+  { id: "services", label: "Tjänster", icon: Wrench },
+  { id: "other", label: "Övrigt", icon: MoreHorizontal },
 ];
+
+export const ALL_CATEGORY_ICON = LayoutGrid;
 
 // Mapping from external/scraped category names to internal category IDs
 // Add new mappings here as we encounter them from scraped sources
