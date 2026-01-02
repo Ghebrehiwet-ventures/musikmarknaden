@@ -6,7 +6,7 @@ export function Header() {
     <header className="border-b border-border bg-background">
       <div className="max-w-[1000px] mx-auto px-4 flex h-10 items-center">
         <a href="/" className="font-medium text-sm">
-          GearMarket
+          Musikmarknaden
         </a>
 
         <div className="flex items-center gap-3 ml-auto text-sm">
