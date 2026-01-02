@@ -5,6 +5,41 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Delay helper for rate limiting
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// AI categorization using Lovable AI (Gemini 2.5 Flash)
+async function categorizeWithAI(
+  supabaseUrl: string,
+  title: string,
+  imageUrl?: string
+): Promise<string | null> {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/categorize-ad`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, image_url: imageUrl }),
+    });
+
+    if (!response.ok) {
+      console.error(`AI categorization failed for "${title}": ${response.status}`);
+      return null;
+    }
+
+    const result = await response.json();
+    if (result.category && result.confidence !== 'low') {
+      console.log(`AI: "${title.substring(0, 40)}..." -> ${result.category} (${result.confidence})`);
+      return result.category;
+    }
+    return null;
+  } catch (error) {
+    console.error(`AI categorization error for "${title}":`, error);
+    return null;
+  }
+}
+
 const PARSEBOT_API_BASE = 'https://api.parse.bot/scraper/0f1f1694-68f5-4a07-8498-3b2e8a026a74';
 const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v1/scrape';
 
@@ -224,6 +259,60 @@ async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any): P
   return allAds;
 }
 
+// AI-kategorisera annonser som hamnade i "other"
+async function aiCategorizeOtherAds(supabase: any, supabaseUrl: string) {
+  console.log('Starting AI categorization for "other" ads...');
+  
+  // Hämta alla annonser med category = "other"
+  const { data: otherAds, error } = await supabase
+    .from('ad_listings_cache')
+    .select('id, title, image_url, category')
+    .eq('category', 'other')
+    .eq('is_active', true)
+    .limit(50); // Begränsa för att undvika timeout
+  
+  if (error) {
+    console.error('Failed to fetch "other" ads:', error);
+    return { categorized: 0, failed: 0 };
+  }
+  
+  if (!otherAds || otherAds.length === 0) {
+    console.log('No "other" ads to categorize');
+    return { categorized: 0, failed: 0 };
+  }
+  
+  console.log(`Found ${otherAds.length} ads to AI-categorize`);
+  
+  let categorized = 0;
+  let failed = 0;
+  
+  for (const ad of otherAds) {
+    const aiCategory = await categorizeWithAI(supabaseUrl, ad.title, ad.image_url);
+    
+    if (aiCategory && aiCategory !== 'other') {
+      const { error: updateError } = await supabase
+        .from('ad_listings_cache')
+        .update({ category: aiCategory })
+        .eq('id', ad.id);
+      
+      if (updateError) {
+        console.error(`Failed to update category for "${ad.title}":`, updateError);
+        failed++;
+      } else {
+        categorized++;
+      }
+    } else {
+      failed++;
+    }
+    
+    // Rate limiting: 300ms mellan AI-anrop
+    await delay(300);
+  }
+  
+  console.log(`AI categorization complete: ${categorized} categorized, ${failed} failed/unchanged`);
+  return { categorized, failed };
+}
+
 async function fetchAdDetails(adUrl: string, firecrawlApiKey: string): Promise<any> {
   console.log(`Fetching details for: ${adUrl}`);
   
@@ -330,7 +419,14 @@ async function syncAds(supabase: any, parsebotApiKey: string, firecrawlApiKey: s
   // Step 4: Ads are already upserted batch-wise during fetch - skip redundant upsert
   console.log(`All ${allAds.length} ads already saved during fetch`);
 
-  // Step 5: Find ads without details in cache
+  // Step 5: AI categorize ads that ended up in "other"
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  if (supabaseUrl) {
+    const aiResult = await aiCategorizeOtherAds(supabase, supabaseUrl);
+    console.log(`AI categorization: ${aiResult.categorized} ads recategorized`);
+  }
+
+  // Step 6: Find ads without details in cache
   const { data: cachedDetails, error: cacheError } = await supabase
     .from('ad_details_cache')
     .select('ad_url');
@@ -344,7 +440,7 @@ async function syncAds(supabase: any, parsebotApiKey: string, firecrawlApiKey: s
 
   console.log(`${adsNeedingDetails.length} ads need details fetched`);
 
-  // Step 6: Fetch details for new ads (with rate limiting)
+  // Step 7: Fetch details for new ads (with rate limiting)
   let detailsFetched = 0;
   const maxDetailsPerSync = 50; // Limit to prevent timeout
 
