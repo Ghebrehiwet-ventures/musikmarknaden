@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/Header";
 import { CategoryBar } from "@/components/CategoryBar";
+import { AdvancedFilters, Filters } from "@/components/AdvancedFilters";
 import { AdGrid } from "@/components/AdGrid";
 import { AdList } from "@/components/AdList";
 import { AdDetailModal } from "@/components/AdDetailModal";
@@ -19,6 +20,11 @@ export default function Index() {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [sortOption, setSortOption] = useState<SortOption>("newest");
+  const [advancedFilters, setAdvancedFilters] = useState<Filters>({
+    minPrice: null,
+    maxPrice: null,
+    location: "",
+  });
   
   const { startHoverPrefetch, cancelHoverPrefetch } = usePrefetchAdDetails();
 
@@ -43,7 +49,15 @@ export default function Index() {
       
       const matchesCat = !selectedCategory || ad.category === selectedCategory;
       
-      return matchesSearchQuery && matchesCat;
+      // Advanced filters
+      const matchesMinPrice = advancedFilters.minPrice === null || 
+        (ad.price_amount !== null && ad.price_amount >= advancedFilters.minPrice);
+      const matchesMaxPrice = advancedFilters.maxPrice === null || 
+        (ad.price_amount !== null && ad.price_amount <= advancedFilters.maxPrice);
+      const matchesLocation = !advancedFilters.location || 
+        ad.location.toLowerCase().includes(advancedFilters.location.toLowerCase());
+      
+      return matchesSearchQuery && matchesCat && matchesMinPrice && matchesMaxPrice && matchesLocation;
     });
 
     // Sort the filtered results
@@ -58,7 +72,7 @@ export default function Index() {
           return 0; // Already sorted by date from API
       }
     });
-  }, [allAds, searchQuery, selectedCategory, sortOption]);
+  }, [allAds, searchQuery, selectedCategory, sortOption, advancedFilters]);
 
   const totalAds = filteredAndSortedAds.length;
   const perPage = 24;
@@ -84,6 +98,11 @@ export default function Index() {
     setCurrentPage(1);
   };
 
+  const handleAdvancedFiltersChange = (filters: Filters) => {
+    setAdvancedFilters(filters);
+    setCurrentPage(1);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -97,6 +116,11 @@ export default function Index() {
       <CategoryBar
         selectedCategory={selectedCategory}
         onCategoryChange={handleCategoryChange}
+      />
+      
+      <AdvancedFilters 
+        filters={advancedFilters} 
+        onFiltersChange={handleAdvancedFiltersChange} 
       />
       
       <main className="max-w-[1000px] mx-auto px-4 py-3">
