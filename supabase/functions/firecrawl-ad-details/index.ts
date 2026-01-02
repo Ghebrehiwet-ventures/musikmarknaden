@@ -212,6 +212,11 @@ function extractMusikborsenDescription(markdown: string): string {
   
   // Patterns specific to Musikbörsen junk
   const skipPatterns = [
+    /^meny$/i,                              // Navigation "Meny"
+    /^menu$/i,
+    /copyright.*musikbörsen/i,              // Copyright text
+    /all rights reserved/i,
+    /alla rättigheter förbehållna/i,
     /vi använder cookies/i,
     /integritetsinställningar/i,
     /manage consent/i,
@@ -256,9 +261,22 @@ function extractMusikborsenDescription(markdown: string): string {
     /no description/i,
     /^session$/i,
     /^\d+ (year|month|day|minut)/i,
+    /^begagnat$/i,                         // Navigation links
+    /^musikbörsen$/i,
+    /^kontakta oss$/i,
+    /^sälj på musikbörsen/i,
+    /^nyheter$/i,
+    /^logga in$/i,
+    /^registrera$/i,
+    /^om oss$/i,
+    /^villkor$/i,
+    /delbetalning.*klarna/i,              // Marketing text
+    /erbjuder.*byte/i,
+    /byt in ditt.*mot/i,
   ];
   
   let inCookieSection = false;
+  let foundMainContent = false;
   
   for (const line of lines) {
     const trimmed = line.trim();
@@ -287,7 +305,11 @@ function extractMusikborsenDescription(markdown: string): string {
     if (/^e-post:/i.test(trimmed)) continue;
     if (/^telefon:/i.test(trimmed)) continue;
     
+    // Skip copyright lines anywhere
+    if (/copyright\s*\d{4}/i.test(trimmed)) continue;
+    
     contentLines.push(trimmed);
+    foundMainContent = true;
   }
   
   let desc = contentLines.join('\n').trim();
@@ -300,14 +322,28 @@ function extractMusikborsenDescription(markdown: string): string {
   desc = desc.replace(/\\\*/g, '');
   desc = desc.replace(/\\+/g, '');
   
+  // Remove copyright lines that might have slipped through
+  desc = desc.replace(/Copyright\s*\d{4}.*$/gmi, '');
+  desc = desc.replace(/All rights reserved\.?/gi, '');
+  
+  // Remove "Meny" if it appears at start
+  desc = desc.replace(/^Meny\n+/i, '');
+  
   // Remove duplicate consecutive lines
-  const uniqueLines = desc.split('\n').filter((line, i, arr) => i === 0 || line !== arr[i - 1]);
+  const uniqueLines = desc.split('\n')
+    .filter((line, i, arr) => i === 0 || line !== arr[i - 1])
+    .filter(line => line.trim().length > 0);
   desc = uniqueLines.join('\n');
   
   // Final cleanup - remove any remaining cookie-related text that slipped through
   desc = desc.replace(/E-post:.*Köp \/ Fråga \/ Meddelande/gs, '');
   
-  return desc || 'Ingen beskrivning tillgänglig';
+  // If description is too short or just dashes, return fallback
+  if (!desc || desc === '-' || desc.length < 5) {
+    return 'Ingen beskrivning tillgänglig';
+  }
+  
+  return desc;
 }
 
 // Gearloop-specific description extraction
