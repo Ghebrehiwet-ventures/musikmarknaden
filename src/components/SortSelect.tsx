@@ -6,7 +6,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export type SortOption = "newest" | "price-asc" | "price-desc";
+export type SortOption = "relevance" | "newest" | "oldest" | "price-asc" | "price-desc";
 
 interface SortSelectProps {
   value: SortOption;
@@ -16,13 +16,15 @@ interface SortSelectProps {
 export function SortSelect({ value, onChange }: SortSelectProps) {
   return (
     <Select value={value} onValueChange={(v) => onChange(v as SortOption)}>
-      <SelectTrigger className="w-[140px] h-8 text-sm">
+      <SelectTrigger className="w-[160px] h-8 text-sm">
         <SelectValue placeholder="Sortera" />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="newest">Nyast</SelectItem>
-        <SelectItem value="price-asc">Pris (lägst)</SelectItem>
-        <SelectItem value="price-desc">Pris (högst)</SelectItem>
+        <SelectItem value="relevance">Mest relevanta</SelectItem>
+        <SelectItem value="newest">Senaste först</SelectItem>
+        <SelectItem value="oldest">Äldsta först</SelectItem>
+        <SelectItem value="price-asc">Pris lågt–högt</SelectItem>
+        <SelectItem value="price-desc">Pris högt–lågt</SelectItem>
       </SelectContent>
     </Select>
   );
