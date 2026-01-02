@@ -1,5 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { CATEGORIES, ALL_CATEGORY_ICON } from "@/lib/categories";
+import { Button } from "@/components/ui/button";
 
 interface CategoryBarProps {
   selectedCategory: string | null;
@@ -16,6 +18,8 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
   const [scrollProgress, setScrollProgress] = useState(0);
   const [hasOverflow, setHasOverflow] = useState(false);
   const [thumbWidth, setThumbWidth] = useState(0);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const checkScroll = useCallback(() => {
     if (!scrollRef.current) return;
@@ -24,6 +28,8 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
     const overflow = scrollWidth > clientWidth;
     
     setHasOverflow(overflow);
+    setCanScrollLeft(scrollLeft > 0);
+    setCanScrollRight(scrollLeft < maxScroll - 1);
     
     if (overflow && maxScroll > 0) {
       setScrollProgress((scrollLeft / maxScroll) * 100);
@@ -62,6 +68,15 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
     checkScroll();
   };
 
+  const scrollTo = (direction: "left" | "right") => {
+    if (!scrollRef.current) return;
+    const scrollAmount = 200;
+    scrollRef.current.scrollBy({
+      left: direction === "left" ? -scrollAmount : scrollAmount,
+      behavior: "smooth",
+    });
+  };
+
   // Wheel-to-horizontal scroll
   useEffect(() => {
     const container = scrollRef.current;
@@ -90,7 +105,31 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
 
   return (
     <div className="border-b border-border py-3">
-      <div className="max-w-[1000px] mx-auto px-4">
+      <div className="max-w-[1000px] mx-auto px-4 relative">
+        {/* Left arrow - desktop only */}
+        {hasOverflow && canScrollLeft && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => scrollTo("left")}
+            className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 bg-background/80 backdrop-blur-sm shadow-sm border border-border hover:bg-background"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+        )}
+
+        {/* Right arrow - desktop only */}
+        {hasOverflow && canScrollRight && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => scrollTo("right")}
+            className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 bg-background/80 backdrop-blur-sm shadow-sm border border-border hover:bg-background"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        )}
+
         <div
           ref={scrollRef}
           onMouseDown={handleMouseDown}
@@ -100,7 +139,7 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
           onScroll={handleScroll}
           className={`flex items-start gap-6 overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-hide touch-pan-x select-none ${
             isDragging ? "cursor-grabbing" : "cursor-grab"
-          }`}
+          } ${hasOverflow ? "md:px-6" : ""}`}
         >
           {/* All categories button */}
           <button
@@ -143,9 +182,9 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
           <span className="w-6 shrink-0" aria-hidden="true" />
         </div>
 
-        {/* Tradera-style scroll indicator */}
+        {/* Scroll indicator - mobile only */}
         {hasOverflow && (
-          <div className="h-0.5 bg-muted rounded-full mt-3 overflow-hidden">
+          <div className="md:hidden h-0.5 bg-muted rounded-full mt-3 overflow-hidden">
             <div 
               className="h-full bg-primary/60 rounded-full transition-transform duration-150 ease-out"
               style={{ 
