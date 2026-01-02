@@ -93,7 +93,6 @@ function categorizeByKeywords(title: string): string {
   for (const keyword of CATEGORY_KEYWORDS['instrument']) {
     const kw = keyword.toLowerCase();
     if (SHORT_KEYWORDS.has(kw)) {
-      // Use word boundary for short keywords
       const regex = new RegExp(`\\b${kw}\\b`, 'i');
       if (regex.test(titleLower)) return 'instrument';
     } else if (titleLower.includes(kw)) {
@@ -103,7 +102,7 @@ function categorizeByKeywords(title: string): string {
   
   // Then check other categories
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
-    if (category === 'instrument') continue; // Already checked
+    if (category === 'instrument') continue;
     for (const keyword of keywords) {
       const kw = keyword.toLowerCase();
       if (SHORT_KEYWORDS.has(kw)) {
@@ -115,6 +114,40 @@ function categorizeByKeywords(title: string): string {
     }
   }
   return 'other';
+}
+
+// AI categorization using Lovable AI
+async function categorizeWithAI(
+  supabaseUrl: string,
+  title: string,
+  imageUrl?: string
+): Promise<string | null> {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/categorize-ad`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, image_url: imageUrl }),
+    });
+
+    if (!response.ok) {
+      console.error(`AI categorization failed for "${title}": ${response.status}`);
+      return null;
+    }
+
+    const result = await response.json();
+    if (result.category && result.confidence !== 'low') {
+      return result.category;
+    }
+    return null;
+  } catch (error) {
+    console.error(`AI categorization error for "${title}":`, error);
+    return null;
+  }
+}
+
+// Delay helper for rate limiting
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 async function scrapeMusikborsen(firecrawlApiKey: string): Promise<MusikborsenProduct[]> {
@@ -326,6 +359,30 @@ Deno.serve(async (req) => {
 
     // Scrape products
     const products = await scrapeMusikborsen(firecrawlApiKey);
+
+    // Use AI categorization for each product (with rate limiting)
+    const useAI = body.use_ai !== false; // Enable AI by default
+    console.log(`AI categorization: ${useAI ? 'enabled' : 'disabled'}`);
+
+    if (useAI) {
+      console.log('Running AI categorization on products...');
+      let aiCategorized = 0;
+      
+      for (const product of products) {
+        // Only use AI for products that got "other" or uncertain categories
+        if (product.category === 'other' || product.category === 'dj-live') {
+          const aiCategory = await categorizeWithAI(supabaseUrl, product.title, product.image_url);
+          if (aiCategory) {
+            console.log(`AI: "${product.title.substring(0, 30)}..." -> ${aiCategory} (was: ${product.category})`);
+            product.category = aiCategory;
+            aiCategorized++;
+          }
+          // Rate limiting: 300ms between AI calls
+          await delay(300);
+        }
+      }
+      console.log(`AI categorized ${aiCategorized} products`);
+    }
 
     // Prepare ads for upsert
     const now = new Date().toISOString();
