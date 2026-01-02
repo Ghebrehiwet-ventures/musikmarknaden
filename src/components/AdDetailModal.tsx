@@ -7,7 +7,7 @@ import { MapPin, Mail, Phone, Loader2, ChevronLeft, ChevronRight, ExternalLink, 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
-
+import { CATEGORIES, getCategoryLabel } from "@/lib/categories";
 // Helper to detect source from URL
 function getSourceInfo(url: string): { name: string; domain: string } {
   if (url.includes('musikborsen.se')) return { name: 'Musikbörsen', domain: 'musikborsen.se' };
@@ -240,9 +240,9 @@ export function AdDetailModal({ ad, open, onOpenChange }: AdDetailModalProps) {
                 )}
               </div>
 
-              {ad?.category && (
+              {ad?.category && CATEGORIES.some(c => c.id === ad.category) && (
                 <Badge variant="outline" className="mt-3 bg-primary/10 text-primary border-primary/20">
-                  {ad.category}
+                  {getCategoryLabel(ad.category)}
                 </Badge>
               )}
             </div>
