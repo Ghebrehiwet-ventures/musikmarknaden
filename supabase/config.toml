@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.scrape-musikborsen]
 verify_jwt = false
+
+[functions.categorize-ad]
+verify_jwt = false
+
+[functions.batch-categorize]
+verify_jwt = false
