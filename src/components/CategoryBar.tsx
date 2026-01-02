@@ -105,7 +105,7 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
 
   return (
     <div className="border-b border-border py-3">
-      <div className="max-w-[1000px] mx-auto px-4 relative">
+      <div className="max-w-[1000px] mx-auto px-4 relative text-left">
         {/* Left arrow - desktop only */}
         {hasOverflow && canScrollLeft && (
           <button
@@ -133,7 +133,7 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
           onScroll={handleScroll}
-          className={`flex items-start gap-6 overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-hide touch-pan-x select-none ${
+          className={`flex items-start gap-6 overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-hide touch-pan-x select-none justify-start ${
             isDragging ? "cursor-grabbing" : "cursor-grab"
           } ${hasOverflow ? "md:px-6" : ""}`}
         >
