@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/Header";
-import { HeroSearch } from "@/components/HeroSearch";
+import { SearchDropdown } from "@/components/SearchDropdown";
 import { CategoryBar } from "@/components/CategoryBar";
 import { AdGrid } from "@/components/AdGrid";
 import { AdList } from "@/components/AdList";
@@ -10,7 +10,6 @@ import { Pagination } from "@/components/Pagination";
 import { ViewToggle, ViewMode } from "@/components/ViewToggle";
 import { fetchAdListings, Ad } from "@/lib/api";
 import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
-import { mapToInternalCategory } from "@/lib/categories";
 
 export default function Index() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -41,7 +40,6 @@ export default function Index() {
         ad.location.toLowerCase().includes(searchLower) ||
         (ad.price_text?.toLowerCase().includes(searchLower));
       
-      // Backend now saves internal categories directly
       const matchesCat = !selectedCategory || ad.category === selectedCategory;
       
       return matchesSearchQuery && matchesCat;
@@ -74,9 +72,9 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header onCategorySelect={handleCategoryChange} />
       
-      <HeroSearch searchQuery={searchQuery} onSearch={handleSearch} />
+      <SearchDropdown searchQuery={searchQuery} onSearch={handleSearch} />
       
       <CategoryBar 
         selectedCategory={selectedCategory}
@@ -89,7 +87,6 @@ export default function Index() {
           <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
         </div>
 
-        {/* Listings */}
         {viewMode === "grid" ? (
           <AdGrid 
             ads={paginatedAds} 
