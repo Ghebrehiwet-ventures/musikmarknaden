@@ -71,16 +71,18 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header 
-        onCategorySelect={handleCategoryChange} 
-        searchQuery={searchQuery}
-        onSearch={handleSearch}
-      />
-      
-      <CategoryBar
-        selectedCategory={selectedCategory}
-        onCategoryChange={handleCategoryChange}
-      />
+      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <Header 
+          onCategorySelect={handleCategoryChange} 
+          searchQuery={searchQuery}
+          onSearch={handleSearch}
+        />
+        
+        <CategoryBar
+          selectedCategory={selectedCategory}
+          onCategoryChange={handleCategoryChange}
+        />
+      </div>
       
       <main className="max-w-[1000px] mx-auto px-4 py-3">
         <div className="flex items-center justify-between mb-2 text-sm text-muted-foreground">
