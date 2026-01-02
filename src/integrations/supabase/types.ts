@@ -77,6 +77,8 @@ export type Database = {
           location: string | null
           price_amount: number | null
           price_text: string | null
+          source_id: string | null
+          source_name: string | null
           title: string
         }
         Insert: {
@@ -93,6 +95,8 @@ export type Database = {
           location?: string | null
           price_amount?: number | null
           price_text?: string | null
+          source_id?: string | null
+          source_name?: string | null
           title: string
         }
         Update: {
@@ -109,7 +113,165 @@ export type Database = {
           location?: string | null
           price_amount?: number | null
           price_text?: string | null
+          source_id?: string | null
+          source_name?: string | null
           title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_listings_cache_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "scraping_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      category_mappings: {
+        Row: {
+          created_at: string
+          external_category: string
+          id: string
+          internal_category: string
+          source_id: string
+        }
+        Insert: {
+          created_at?: string
+          external_category: string
+          id?: string
+          internal_category: string
+          source_id: string
+        }
+        Update: {
+          created_at?: string
+          external_category?: string
+          id?: string
+          internal_category?: string
+          source_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "category_mappings_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "scraping_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scraping_sources: {
+        Row: {
+          base_url: string
+          config: Json | null
+          created_at: string
+          id: string
+          is_active: boolean
+          last_sync_at: string | null
+          last_sync_count: number | null
+          last_sync_status: string | null
+          name: string
+          scrape_url: string
+          source_type: Database["public"]["Enums"]["source_type"]
+          updated_at: string
+        }
+        Insert: {
+          base_url: string
+          config?: Json | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          last_sync_count?: number | null
+          last_sync_status?: string | null
+          name: string
+          scrape_url: string
+          source_type: Database["public"]["Enums"]["source_type"]
+          updated_at?: string
+        }
+        Update: {
+          base_url?: string
+          config?: Json | null
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_sync_at?: string | null
+          last_sync_count?: number | null
+          last_sync_status?: string | null
+          name?: string
+          scrape_url?: string
+          source_type?: Database["public"]["Enums"]["source_type"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sync_logs: {
+        Row: {
+          ads_found: number | null
+          ads_new: number | null
+          ads_removed: number | null
+          ads_updated: number | null
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          source_id: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          ads_found?: number | null
+          ads_new?: number | null
+          ads_removed?: number | null
+          ads_updated?: number | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          source_id: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          ads_found?: number | null
+          ads_new?: number | null
+          ads_removed?: number | null
+          ads_updated?: number | null
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          source_id?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_logs_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "scraping_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
         }
         Relationships: []
       }
@@ -118,10 +280,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
+      source_type: "parsebot" | "firecrawl_list" | "firecrawl_crawl"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -248,6 +417,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+      source_type: ["parsebot", "firecrawl_list", "firecrawl_crawl"],
+    },
   },
 } as const
