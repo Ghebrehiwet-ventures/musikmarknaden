@@ -7,6 +7,7 @@ import { AdList } from "@/components/AdList";
 import { AdDetailModal } from "@/components/AdDetailModal";
 import { Pagination } from "@/components/Pagination";
 import { ViewToggle, ViewMode } from "@/components/ViewToggle";
+import { SortSelect, SortOption } from "@/components/SortSelect";
 import { fetchAdListings, Ad } from "@/lib/api";
 import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
 
@@ -17,6 +18,7 @@ export default function Index() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [sortOption, setSortOption] = useState<SortOption>("newest");
   
   const { startHoverPrefetch, cancelHoverPrefetch } = usePrefetchAdDetails();
 
@@ -31,8 +33,8 @@ export default function Index() {
 
   const allAds = data?.ads || [];
   
-  const filteredAds = useMemo(() => {
-    return allAds.filter(ad => {
+  const filteredAndSortedAds = useMemo(() => {
+    const filtered = allAds.filter(ad => {
       const searchLower = searchQuery.toLowerCase().trim();
       const matchesSearchQuery = !searchLower || 
         ad.title.toLowerCase().includes(searchLower) ||
@@ -43,16 +45,29 @@ export default function Index() {
       
       return matchesSearchQuery && matchesCat;
     });
-  }, [allAds, searchQuery, selectedCategory]);
 
-  const totalAds = filteredAds.length;
+    // Sort the filtered results
+    return [...filtered].sort((a, b) => {
+      switch (sortOption) {
+        case "price-asc":
+          return (a.price_amount ?? Infinity) - (b.price_amount ?? Infinity);
+        case "price-desc":
+          return (b.price_amount ?? 0) - (a.price_amount ?? 0);
+        case "newest":
+        default:
+          return 0; // Already sorted by date from API
+      }
+    });
+  }, [allAds, searchQuery, selectedCategory, sortOption]);
+
+  const totalAds = filteredAndSortedAds.length;
   const perPage = 24;
   const totalPages = Math.max(1, Math.ceil(totalAds / perPage));
   
   const paginatedAds = useMemo(() => {
     const start = (currentPage - 1) * perPage;
-    return filteredAds.slice(start, start + perPage);
-  }, [filteredAds, currentPage, perPage]);
+    return filteredAndSortedAds.slice(start, start + perPage);
+  }, [filteredAndSortedAds, currentPage, perPage]);
 
   const handleAdClick = (ad: Ad) => {
     setSelectedAd(ad);
@@ -87,7 +102,10 @@ export default function Index() {
       <main className="max-w-[1000px] mx-auto px-4 py-3">
         <div className="flex items-center justify-between mb-2 text-sm text-muted-foreground">
           <span>{totalAds} annonser{searchQuery && ` för "${searchQuery}"`}</span>
-          <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+          <div className="flex items-center gap-2">
+            <SortSelect value={sortOption} onChange={setSortOption} />
+            <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+          </div>
         </div>
 
         {viewMode === "grid" ? (
@@ -108,7 +126,7 @@ export default function Index() {
           />
         )}
 
-        {!isLoading && filteredAds.length === 0 && (
+        {!isLoading && filteredAndSortedAds.length === 0 && (
           <div className="text-center py-12">
             <p className="text-muted-foreground">
               Inga annonser hittades{searchQuery && ` för "${searchQuery}"`}
