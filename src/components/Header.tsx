@@ -1,14 +1,22 @@
 import { Music } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
+import { MobileMenu } from "./MobileMenu";
 
-export function Header() {
+interface HeaderProps {
+  onCategorySelect?: (categoryId: string | null) => void;
+}
+
+export function Header({ onCategorySelect }: HeaderProps) {
   return (
     <header className="border-b border-border bg-background">
       <div className="max-w-[1000px] mx-auto px-4 flex h-10 items-center">
-        <a href="/" className="flex items-center gap-1.5 font-medium text-sm hover:text-muted-foreground transition-colors">
-          <Music className="h-4 w-4" />
-          <span className="hidden sm:inline">Musikmarknaden</span>
-        </a>
+        <div className="flex items-center gap-2">
+          <MobileMenu onCategorySelect={onCategorySelect} />
+          <a href="/" className="flex items-center gap-1.5 font-medium text-sm hover:text-muted-foreground transition-colors">
+            <Music className="h-4 w-4" />
+            <span className="hidden sm:inline">Musikmarknaden</span>
+          </a>
+        </div>
 
         <div className="flex items-center gap-3 ml-auto text-sm">
           <ThemeToggle />
