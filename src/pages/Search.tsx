@@ -126,8 +126,8 @@ export default function SearchPage() {
     <div className="min-h-screen bg-background">
       <Header />
       
-      {/* Search Header */}
-      <div className="border-b border-border bg-muted/30">
+      {/* Search Header - Sticky */}
+      <div className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="max-w-[1000px] mx-auto px-4 py-4">
           <div className="flex items-center gap-2 mb-4">
             <SlidersHorizontal className="h-5 w-5 text-muted-foreground" />
