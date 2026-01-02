@@ -77,12 +77,12 @@ export default function Index() {
           searchQuery={searchQuery}
           onSearch={handleSearch}
         />
-        
-        <CategoryBar
-          selectedCategory={selectedCategory}
-          onCategoryChange={handleCategoryChange}
-        />
       </div>
+      
+      <CategoryBar
+        selectedCategory={selectedCategory}
+        onCategoryChange={handleCategoryChange}
+      />
       
       <main className="max-w-[1000px] mx-auto px-4 py-3">
         <div className="flex items-center justify-between mb-2 text-sm text-muted-foreground">
