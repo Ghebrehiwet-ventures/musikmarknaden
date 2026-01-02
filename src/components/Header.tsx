@@ -1,4 +1,4 @@
-import { Music } from "lucide-react";
+import { Music, LogIn, PlusCircle } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { MobileMenu } from "./MobileMenu";
 
@@ -20,11 +20,21 @@ export function Header({ onCategorySelect }: HeaderProps) {
 
         <div className="flex items-center gap-3 ml-auto text-sm">
           <ThemeToggle />
-          <a href="/" className="text-muted-foreground hover:text-foreground">
+          
+          {/* Mobile: icons only */}
+          <a href="/" className="sm:hidden text-muted-foreground hover:text-foreground" title="Logga in">
+            <LogIn className="h-4 w-4" />
+          </a>
+          <a href="/" className="sm:hidden hover:text-muted-foreground" title="Lägg upp annons">
+            <PlusCircle className="h-4 w-4" />
+          </a>
+          
+          {/* Desktop: text */}
+          <a href="/" className="hidden sm:inline text-muted-foreground hover:text-foreground">
             Logga in
           </a>
-          <span className="text-border">|</span>
-          <a href="/" className="hover:text-muted-foreground">
+          <span className="hidden sm:inline text-border">|</span>
+          <a href="/" className="hidden sm:inline hover:text-muted-foreground">
             Lägg upp annons
           </a>
         </div>
