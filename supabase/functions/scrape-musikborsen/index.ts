@@ -26,48 +26,85 @@ function parsePrice(priceText: string): { text: string; amount: number | null } 
 }
 
 // Keyword-based categorization matching internal categories
+// Extended with more brands, models, and Swedish terms
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   'instrument': [
+    // Guitars & brands
     'gitarr', 'guitar', 'fender', 'gibson', 'ibanez', 'epiphone', 'schecter', 'stratocaster', 'telecaster', 'les paul',
-    'bas', 'bass', 'precision', 'jazz bass', 'hofner', 'stingray',
+    'prs', 'paul reed smith', 'g&l', 'music man', 'suhr', 'charvel', 'jackson', 'esp', 'ltd', 'squier',
+    'gretsch', 'rickenbacker', 'taylor', 'martin', 'takamine', 'yamaha fg', 'yamaha c', 'cordoba', 'godin',
+    'hagström', 'hagstrom', 'larrivee', 'collings', 'santa cruz', 'guild', 'ovation', 'breedlove',
+    // Bass
+    'bas', 'bass', 'precision', 'jazz bass', 'hofner', 'stingray', 'warwick', 'sandberg', 'spector', 'lakland',
+    'dingwall', 'sadowsky', 'fodera', 'mayones', 'marleaux', 'zon', 'esh', 'elrick',
+    // Drums
     'trumm', 'drum', 'virvel', 'snare', 'cymbal', 'hi-hat', 'pearl', 'sonor', 'tama', 'dw', 'zildjian', 'sabian',
-    'piano', 'flygel', 'rhodes', 'wurlitzer', 'saxofon', 'trumpet', 'violin', 'cello', 'flöjt', 'klarinett',
-    'ukulele', 'mandolin', 'banjo', 'munspel', 'dragspel', 'accordion'
+    'mapex', 'gretsch drums', 'ludwig', 'yamaha drums', 'paiste', 'meinl', 'istanbul', 'bosphorus',
+    'kick', 'bastrumma', 'tom', 'floor tom', 'ride', 'crash', 'splash', 'china', 'slagverk', 'percussion',
+    // Keys
+    'piano', 'flygel', 'rhodes', 'wurlitzer', 'clavinet', 'keyboard', 'tangent', 'klaver',
+    // Wind/String
+    'saxofon', 'trumpet', 'violin', 'cello', 'flöjt', 'klarinett', 'oboe', 'fagott', 'trombon', 'valthorn',
+    'ukulele', 'mandolin', 'banjo', 'munspel', 'dragspel', 'accordion', 'fiol', 'viola', 'kontrabas'
   ],
   'amplifiers': [
-    'förstärkare', 'amp', 'combo', 'marshall', 'vox', 'mesa', 'boogie',
-    'peavey', 'engl', 'orange', 'blackstar', 'laney', 'ampeg', 'head', 'topteil',
-    'cab', 'cabinet', 'speaker', 'högtalare', 'rörtop', 'tube amp'
+    'förstärkare', 'amp', 'combo', 'marshall', 'vox', 'mesa', 'boogie', 'mesa boogie', 'mesa/boogie',
+    'peavey', 'engl', 'orange', 'blackstar', 'laney', 'ampeg', 'head', 'topteil', 'topp',
+    'cab', 'cabinet', 'speaker', 'högtalare', 'rörtop', 'tube amp', 'rörförstärkare',
+    'fender amp', 'fender twin', 'fender deluxe', 'fender bassman', 'blues junior', 'hot rod',
+    'soldano', 'bogner', 'friedman', 'diezel', 'hughes & kettner', 'h&k', 'randall', 'egnater',
+    'quilter', 'quilter labs', 'markbass', 'hartke', 'gallien krueger', 'gk', 'aguilar', 'eden',
+    'roland jc', 'jazz chorus', 'kemper', 'line 6', 'helix', 'fractal', 'axe-fx', 'neural dsp', 'quad cortex'
   ],
   'pedals-effects': [
-    'pedal', 'effekt', 'effect', 'drive', 'overdrive', 'distortion', 'fuzz',
+    'pedal', 'effekt', 'effect', 'drive', 'overdrive', 'distortion', 'fuzz', 'effektpedal', 'gitarrpedal',
     'delay', 'reverb', 'echo', 'chorus', 'flanger', 'phaser', 'wah', 'tremolo', 'vibrato',
-    'boss', 'mxr', 'electro-harmonix', 'ehx', 'strymon', 'eventide', 'tc electronic', 
-    'walrus', 'jhs', 'keeley', 'ibanez ts', 'tube screamer', 'big muff', 'looper'
+    'boss', 'mxr', 'electro-harmonix', 'ehx', 'strymon', 'eventide', 'tc electronic',
+    'walrus', 'jhs', 'keeley', 'ibanez ts', 'tube screamer', 'big muff', 'looper', 'multieffekt',
+    'fulltone', 'analogman', 'earthquaker', 'eqd', 'chase bliss', 'meris', 'source audio',
+    'way huge', 'dunlop', 'cry baby', 'klon', 'klone', 'timmy', 'blues breaker', 'rat', 'ds-1', 'bd-2',
+    'tuner pedal', 'noise gate', 'compressor pedal', 'booster', 'boost pedal', 'preamp pedal'
   ],
   'synth-modular': [
     'synth', 'synthesizer', 'moog', 'korg', 'roland', 'yamaha dx', 'prophet', 'juno', 'jupiter',
-    'eurorack', 'modular', 'sequencer', 'arturia', 'nord', 'access virus', 'dave smith',
-    'minilogue', 'monologue', 'microkorg', 'minmoog', 'minimoog', 'op-1', 'teenage engineering',
-    'sampler', 'mpc', 'maschine', 'elektron', 'octatrack', 'digitakt', 'digitone'
+    'eurorack', 'modular', 'sequencer', 'arturia', 'nord', 'access virus', 'dave smith', 'dsi', 'sequential',
+    'minilogue', 'monologue', 'microkorg', 'minmoog', 'minimoog', 'op-1', 'teenage engineering', 'op-z',
+    'sampler', 'mpc', 'maschine', 'elektron', 'octatrack', 'digitakt', 'digitone', 'model:samples',
+    'analogsynt', 'analog synth', 'polysynth', 'monosynth', 'oberheim', 'arp', 'buchla', 'make noise',
+    'behringer synth', 'deepmind', 'model d', 'prologue', 'rev2', 'peak', 'summit', 'hydrasynth',
+    'waldorf', 'blofeld', 'microfreak', 'grandmother', 'matriarch', 'subsequent', 'sub 37',
+    'rs-505', 'sh-101', 'jx-3p', 'jp-8000', 'jd-800', 'v-synth', 'd-50', 'dx7', 'sy77', 'cs-80',
+    'cp4', 'cp40', 'nord stage', 'nord electro', 'nord lead', 'clavia'
   ],
   'studio': [
     'mikrofon', 'microphone', 'neumann', 'shure', 'sennheiser', 'akg', 'rode', 'audio-technica',
-    'interface', 'ljudkort', 'audio interface', 'preamp', 'kompressor', 'compressor', 
-    'eq', 'equalizer', 'mixer', 'mackie', 'mischpult', 'mixing desk',
-    'monitor', 'studiomonitor', 'focusrite', 'universal audio', 'api', 'neve', 'ssl',
-    'scarlett', 'apollo', 'clarett', 'genelec', 'adam', 'yamaha hs', 'krk'
+    'interface', 'ljudkort', 'audio interface', 'preamp', 'kompressor', 'compressor',
+    'eq', 'equalizer', 'mixer', 'mackie', 'mischpult', 'mixing desk', 'mixerbord',
+    'monitor', 'studiomonitor', 'focusrite', 'universal audio', 'uad', 'api', 'neve', 'ssl',
+    'scarlett', 'apollo', 'clarett', 'genelec', 'adam audio', 'yamaha hs', 'krk', 'jbl', 'dynaudio',
+    'sm57', 'sm58', 'u87', 'c414', 'at2020', 'nt1', 'tlm', 'condensator', 'kondensator',
+    'audient', 'motu', 'rme', 'apogee', 'steinberg', 'behringer umc', 'presonus', 'antelope',
+    'outboard', 'channel strip', 'la-2a', '1176', 'dbx', 'distressor', 'avalon', 'manley', 'tube-tech',
+    'patchbay', 'di-box', 'di box', 'reamp'
   ],
   'dj-live': [
     'dj', 'turntable', 'skivspelare', 'cdj', 'controller', 'pioneer', 'technics', 'rane', 'serato', 'traktor',
     'pa', 'pa-system', 'line array', 'subwoofer', 'sub', 'aktiv högtalare', 'powered speaker',
-    'ljus', 'lighting', 'dmx', 'moving head', 'laser', 'strobe', 'fog', 'haze'
+    'ljus', 'lighting', 'dmx', 'moving head', 'laser', 'strobe', 'fog', 'haze', 'ljuseffekt',
+    'denon dj', 'numark', 'allen & heath', 'xone', 'djm', 'ddj', 'rekordbox', 'virtual dj',
+    'in-ear', 'iem', 'monitor system', 'stagebox', 'snake', 'splitter', 'di-box live',
+    'turbosound', 'rcf', 'qsc', 'electro-voice', 'ev', 'jbl prx', 'jbl eon', 'yamaha dxr',
+    'smoke machine', 'rökmaskin', 'par can', 'led bar', 'wash', 'spot'
   ],
   'accessories-parts': [
-    'case', 'väska', 'bag', 'gigbag', 'flightcase', 'hardcase',
-    'stativ', 'stand', 'kabel', 'cable', 'sträng', 'string', 'plektrum', 'pick', 
+    'case', 'väska', 'bag', 'gigbag', 'flightcase', 'hardcase', 'softcase',
+    'stativ', 'stand', 'kabel', 'cable', 'sträng', 'string', 'plektrum', 'pick',
     'strap', 'rem', 'gitarrem', 'mikrofonstativ', 'pedalboard', 'pickups', 'pickup',
-    'sadel', 'bridge', 'tuner', 'stämapparat', 'capo', 'slide'
+    'sadel', 'bridge', 'tuner', 'stämapparat', 'capo', 'slide', 'bottleneck',
+    'dämpare', 'mute', 'trumbälte', 'cymbalställ', 'hi-hat stand', 'snare stand',
+    'noter', 'notställ', 'music stand', 'metronom', 'strängvinda', 'string winder',
+    'kabelhärva', 'adapter', 'power supply', 'strömförsörjning', 'isolated power',
+    'humbucker', 'single coil', 'p90', 'emg', 'seymour duncan', 'dimarzio', 'lollar', 'bare knuckle'
   ]
 };
 

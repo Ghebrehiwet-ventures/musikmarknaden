@@ -6,16 +6,16 @@ const corsHeaders = {
 };
 
 const CATEGORIES = [
-  { id: 'instrument', label: 'Instrument', examples: 'Gitarrer (Fender, Gibson, Ibanez), basar, trummor, keyboards, piano, saxofon, violin, ukulele, mandolin' },
-  { id: 'amplifiers', label: 'Förstärkare', examples: 'Gitarrförstärkare, basförstärkare, toppar, kabinett (Marshall, Vox, Mesa Boogie, Orange, Ampeg)' },
-  { id: 'pedals-effects', label: 'Pedaler & Effekter', examples: 'Effektpedaler, overdrive, distortion, delay, reverb, looper, multieffekter (Boss, MXR, Strymon)' },
-  { id: 'studio', label: 'Studio', examples: 'Mikrofoner (Shure, Neumann), ljudkort, audio interface, mixerbord, studiomonitorer, kompressorer' },
-  { id: 'dj-live', label: 'DJ & Live', examples: 'DJ-controller, turntables, CDJ, PA-system, aktiva högtalare, ljusutrustning, DMX, moving heads' },
-  { id: 'synth-modular', label: 'Synth & Modulärt', examples: 'Synthesizers (Moog, Korg, Roland), Eurorack-moduler, sequencers, samplers (Elektron, MPC)' },
-  { id: 'software-computers', label: 'Mjukvara & Datorer', examples: 'DAW-programvara, plugins, VST, datorer för musik, ljudkort (software)' },
-  { id: 'accessories-parts', label: 'Tillbehör & Delar', examples: 'Kablar, case, stativ, strängar, plektrum, gitarrem, pedalboards, pickups, reservdelar' },
-  { id: 'services', label: 'Tjänster', examples: 'Lektioner, replokaler, reparationstjänster, uthyrning' },
-  { id: 'other', label: 'Övrigt', examples: 'Allt som inte passar in i andra kategorier' },
+  { id: 'instrument', label: 'Instrument', examples: 'Gitarrer (Fender, Gibson, G&L, PRS, Ibanez, Squier, Gretsch), basar (Warwick, Sandberg, Spector), trummor (Pearl, Tama, DW), keyboards (Yamaha, Roland), blåsinstrument, stråkinstrument' },
+  { id: 'amplifiers', label: 'Förstärkare', examples: 'Gitarrförstärkare (Marshall, Vox, Fender, Mesa Boogie, Orange, Blackstar), basförstärkare (Ampeg, Markbass, Aguilar), Kemper, Quad Cortex, Neural DSP, Line 6 Helix' },
+  { id: 'pedals-effects', label: 'Pedaler & Effekter', examples: 'Overdrive, distortion, fuzz, delay, reverb, looper, wah (Boss, MXR, Strymon, Eventide, TC Electronic, Walrus, JHS, EHX, Keeley)' },
+  { id: 'studio', label: 'Studio', examples: 'Mikrofoner (Shure SM57/58, Neumann, AKG, Rode), ljudkort/interface (Focusrite, Universal Audio, RME, MOTU), mixerbord, studiomonitorer (Genelec, Adam, KRK, Yamaha HS), kompressorer, preamps' },
+  { id: 'dj-live', label: 'DJ & Live', examples: 'DJ-controller, turntables (Technics, Pioneer CDJ), PA-system (QSC, RCF, JBL), aktiva högtalare, ljusutrustning, DMX, moving heads' },
+  { id: 'synth-modular', label: 'Synth & Modulärt', examples: 'Synthesizers (Moog, Korg, Roland Juno/Jupiter, Nord, Sequential Prophet, Arturia), Eurorack-moduler, sequencers, samplers (Elektron, MPC), analoga och digitala syntar' },
+  { id: 'software-computers', label: 'Mjukvara & Datorer', examples: 'DAW-programvara, plugins, VST, datorer för musik' },
+  { id: 'accessories-parts', label: 'Tillbehör & Delar', examples: 'Kablar, case/väskor, stativ, strängar, plektrum, gitarrem, pedalboards, pickups (Seymour Duncan, DiMarzio, EMG), reservdelar' },
+  { id: 'services', label: 'Tjänster', examples: 'Lektioner, replokaler, reparationstjänster, uthyrning, sökes-annonser för musiker' },
+  { id: 'other', label: 'Övrigt', examples: 'Litteratur, noter, musikmemorabilia - ENDAST om det verkligen inte passar någon annan kategori' },
 ];
 
 interface CategorizeRequest {
@@ -45,13 +45,49 @@ async function categorizeWithAI(
 KATEGORIER:
 ${categoryList}
 
-VIKTIGA REGLER:
-1. Gitarrer, basar, trummor, keyboards, blåsinstrument = instrument (INTE förstärkare!)
-2. "G&L", "Fender", "Gibson", "Ibanez" är gitarrmärken = instrument
-3. Förstärkare är separata enheter som förstärker ljud (Marshall, Vox, Ampeg toppar/kabinett)
-4. DJ-utrustning inkluderar turntables, controllers, CDJ - men INTE vanliga gitarrer
-5. Synth/synthesizers är en egen kategori, inte instrument
-6. Om du är osäker, välj den mest troliga kategorin baserat på produktnamn
+VIKTIGA REGLER (FÖLJ DESSA NOGGRANT):
+
+1. INSTRUMENT (gitarrer, basar, trummor, etc.):
+   - Alla gitarrer: Fender, Gibson, G&L, PRS, Ibanez, Schecter, ESP, Squier, Gretsch, Rickenbacker, Taylor, Martin
+   - Alla basar: Precision, Jazz Bass, Warwick, Sandberg, Spector, Stingray, Höfner
+   - Alla trummor: Pearl, Tama, DW, Sonor, Mapex, Ludwig, cymbaler (Zildjian, Sabian, Meinl)
+   - Keyboards som spelar ljud: Rhodes, Wurlitzer, Clavinet
+   - Blås- och stråkinstrument
+
+2. FÖRSTÄRKARE (separata enheter som förstärker ljud):
+   - Gitarrförstärkare: Marshall, Vox, Fender (Twin, Deluxe, Bassman), Mesa Boogie, Orange, Blackstar, Engl
+   - Basförstärkare: Ampeg, Markbass, Aguilar, Hartke, Gallien-Krueger
+   - Digitala: Kemper, Line 6 Helix, Fractal Axe-FX, Neural DSP Quad Cortex
+   - "Combo", "topteil", "topp", "head", "cabinet", "cab" = förstärkare
+
+3. PEDALER & EFFEKTER:
+   - Alla fotpedaler: overdrive, distortion, fuzz, delay, reverb, chorus, wah, looper
+   - Märken: Boss, MXR, Strymon, Eventide, TC Electronic, Walrus, JHS, EHX
+
+4. SYNTH & MODULÄRT (INTE instrument):
+   - Synthesizers: Moog, Korg (Minilogue, Prologue), Roland (Juno, Jupiter), Nord, Prophet, Arturia
+   - Eurorack och modulärt
+   - Samplers: Elektron (Digitakt, Octatrack), MPC, Maschine
+
+5. STUDIO:
+   - Mikrofoner: Shure SM57/58, Neumann, AKG, Rode
+   - Ljudkort/interface: Focusrite Scarlett, Universal Audio Apollo, RME
+   - Monitorer: Genelec, Adam, Yamaha HS, KRK
+
+6. DJ & LIVE:
+   - DJ-utrustning: CDJ, controller, turntables (Technics, Pioneer)
+   - PA-system, aktiva högtalare
+   - Ljusutrustning
+
+EXEMPEL PÅ KNEPIGA FALL:
+- "Fender Stratocaster" = instrument (gitarr)
+- "Fender Twin Reverb" = amplifiers (gitarrförstärkare)
+- "Nord Stage 3" = synth-modular (digital keyboard/synth)
+- "Boss DS-1" = pedals-effects (distortionpedal)
+- "Shure SM58" = studio (mikrofon)
+- "Technics 1210" = dj-live (turntable)
+
+VIKTIGT: Välj ALDRIG "other" om produkten uppenbart passar i en annan kategori. "other" är endast för saker som noter, böcker eller icke-musikrelaterat.
 
 Svara ENDAST med ett JSON-objekt i detta format:
 {"category": "category-id", "confidence": "high/medium/low", "reasoning": "kort förklaring"}`;
