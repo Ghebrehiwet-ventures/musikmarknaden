@@ -41,6 +41,12 @@ export interface StatsOverview {
   by_source: Record<string, number>;
 }
 
+export interface SourceCategoryInfo {
+  source_category: string;
+  count: number;
+  is_mapped: boolean;
+}
+
 async function adminFetch<T>(action: string, body?: Record<string, unknown>, params?: Record<string, string>): Promise<T> {
   const queryParams = new URLSearchParams({ action, ...params });
   
@@ -166,5 +172,10 @@ export const adminApi = {
 
   async getStats(): Promise<StatsOverview> {
     return adminFetch('stats');
+  },
+
+  async getSourceCategories(source_id: string): Promise<SourceCategoryInfo[]> {
+    const result = await adminFetch<{ categories: SourceCategoryInfo[] }>('source-categories', undefined, { source_id });
+    return result.categories;
   },
 };
