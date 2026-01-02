@@ -452,13 +452,38 @@ function extractImages(html: string, sourceType: string): string[] {
       }
     }
   } else if (sourceType === 'gearloop') {
-    // Gearloop uses their CDN
-    const glRegex = /https:\/\/assets\.gearloop\.se\/files\/\d+\.(?:jpg|jpeg|png|gif|webp)/gi;
-    let match;
-    while ((match = glRegex.exec(html)) !== null) {
-      const url = match[0];
-      if (!images.includes(url)) {
-        images.push(url);
+    // Extract the article section only to avoid "related ads" images
+    const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+    const articleHtml = articleMatch ? articleMatch[1] : '';
+    
+    if (articleHtml) {
+      // 1. Get initial image from imageSlider() call
+      const sliderMatch = articleHtml.match(/imageSlider\(['"]([^'"]+)['"]\)/);
+      if (sliderMatch && sliderMatch[1].includes('assets.gearloop.se')) {
+        images.push(sliderMatch[1]);
+      }
+      
+      // 2. Get all data-image attributes (carousel thumbnails point to full images)
+      const dataImageRegex = /data-image=["']([^"']+)["']/gi;
+      let match;
+      while ((match = dataImageRegex.exec(articleHtml)) !== null) {
+        const url = match[1];
+        if (url.includes('assets.gearloop.se') && !images.includes(url)) {
+          images.push(url);
+        }
+      }
+    }
+    
+    // Fallback to old method if no images found
+    if (images.length === 0) {
+      console.log('Gearloop: No images found in article, using fallback');
+      const glRegex = /https:\/\/assets\.gearloop\.se\/files\/\d+\.(?:jpg|jpeg|png|gif|webp)/gi;
+      let match;
+      while ((match = glRegex.exec(html)) !== null) {
+        const url = match[0];
+        if (!images.includes(url)) {
+          images.push(url);
+        }
       }
     }
   } else {
