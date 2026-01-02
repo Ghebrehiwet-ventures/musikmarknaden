@@ -18,7 +18,7 @@ export default function Index() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
-  const [sortOption, setSortOption] = useState<SortOption>("newest");
+  const [sortOption, setSortOption] = useState<SortOption>("relevance");
   
   const { startHoverPrefetch, cancelHoverPrefetch } = usePrefetchAdDetails();
 
@@ -68,9 +68,21 @@ export default function Index() {
           const priceB = parsePriceFromText(b.price_text) ?? 0;
           return priceB - priceA;
         }
-        case "newest":
+        case "newest": {
+          // Sort by date descending (newest first)
+          const dateA = new Date(a.date || 0).getTime();
+          const dateB = new Date(b.date || 0).getTime();
+          return dateB - dateA;
+        }
+        case "oldest": {
+          // Sort by date ascending (oldest first)
+          const dateA = new Date(a.date || 0).getTime();
+          const dateB = new Date(b.date || 0).getTime();
+          return dateA - dateB;
+        }
+        case "relevance":
         default:
-          return 0; // Already sorted by date from API
+          return 0; // Keep original order from API
       }
     });
   }, [allAds, searchQuery, selectedCategory, sortOption]);
