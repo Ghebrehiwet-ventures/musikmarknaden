@@ -77,6 +77,7 @@ export type Database = {
           location: string | null
           price_amount: number | null
           price_text: string | null
+          source_category: string | null
           source_id: string | null
           source_name: string | null
           title: string
@@ -95,6 +96,7 @@ export type Database = {
           location?: string | null
           price_amount?: number | null
           price_text?: string | null
+          source_category?: string | null
           source_id?: string | null
           source_name?: string | null
           title: string
@@ -113,6 +115,7 @@ export type Database = {
           location?: string | null
           price_amount?: number | null
           price_text?: string | null
+          source_category?: string | null
           source_id?: string | null
           source_name?: string | null
           title?: string

@@ -307,6 +307,59 @@ Deno.serve(async (req) => {
         };
         break;
 
+      case 'source-categories':
+        // Get unique source_category values for a specific source
+        const sourceIdForCategories = url.searchParams.get('source_id');
+        if (!sourceIdForCategories) {
+          return new Response(
+            JSON.stringify({ error: 'source_id required' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Get all unique source_category values with counts
+        const { data: categoryData, error: categoryError } = await adminClient
+          .from('ad_listings_cache')
+          .select('source_category')
+          .eq('source_id', sourceIdForCategories)
+          .eq('is_active', true)
+          .not('source_category', 'is', null);
+
+        if (categoryError) throw categoryError;
+
+        // Count occurrences
+        const categoryCounts = (categoryData || []).reduce((acc: Record<string, number>, row) => {
+          const cat = row.source_category;
+          if (cat) {
+            acc[cat] = (acc[cat] || 0) + 1;
+          }
+          return acc;
+        }, {});
+
+        // Get existing mappings for this source
+        const { data: existingMappings } = await adminClient
+          .from('category_mappings')
+          .select('external_category, internal_category')
+          .eq('source_id', sourceIdForCategories);
+
+        const mappedCategories = new Set((existingMappings || []).map(m => m.external_category.toLowerCase()));
+
+        // Format response with mapped status
+        const sourceCategories = Object.entries(categoryCounts)
+          .map(([category, count]) => ({
+            source_category: category,
+            count,
+            is_mapped: mappedCategories.has(category.toLowerCase()),
+          }))
+          .sort((a, b) => {
+            // Unmapped first, then by count
+            if (a.is_mapped !== b.is_mapped) return a.is_mapped ? 1 : -1;
+            return b.count - a.count;
+          });
+
+        result = { categories: sourceCategories };
+        break;
+
       default:
         return new Response(
           JSON.stringify({ error: 'Invalid action' }),
