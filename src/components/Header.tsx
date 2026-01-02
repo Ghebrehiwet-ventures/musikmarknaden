@@ -1,43 +1,75 @@
-import { Music, LogIn, PlusCircle } from "lucide-react";
+import { Music, User, PlusCircle } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { MobileMenu } from "./MobileMenu";
+import { SearchDropdown } from "./SearchDropdown";
 
 interface HeaderProps {
   onCategorySelect?: (categoryId: string | null) => void;
+  searchQuery?: string;
+  onSearch?: (query: string) => void;
 }
 
-export function Header({ onCategorySelect }: HeaderProps) {
+export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderProps) {
+  const handleSearch = (query: string) => {
+    onSearch?.(query);
+  };
+
   return (
     <header className="border-b border-border bg-background">
-      <div className="max-w-[1000px] mx-auto px-4 flex h-10 items-center">
-        <div className="flex items-center gap-2">
+      {/* Main header row */}
+      <div className="max-w-[1000px] mx-auto px-4 flex h-14 items-center gap-4">
+        {/* Left: Hamburger + Logo */}
+        <div className="flex items-center gap-3">
           <MobileMenu onCategorySelect={onCategorySelect} />
-          <a href="/" className="flex items-center gap-1.5 font-medium text-sm hover:text-muted-foreground transition-colors">
-            <Music className="h-4 w-4" />
+          <a href="/" className="flex items-center gap-2 font-semibold text-sm hover:text-muted-foreground transition-colors">
+            <Music className="h-5 w-5" />
             <span className="hidden sm:inline">Musikmarknaden</span>
           </a>
         </div>
 
-        <div className="flex items-center gap-3 ml-auto text-sm">
+        {/* Center: Search bar (desktop only) */}
+        <div className="hidden md:flex flex-1 justify-center px-4">
+          <SearchDropdown 
+            searchQuery={searchQuery} 
+            onSearch={handleSearch}
+            className="w-full max-w-md"
+            compact
+          />
+        </div>
+
+        {/* Right: Icons */}
+        <div className="flex items-center gap-1 ml-auto">
           <ThemeToggle />
           
-          {/* Mobile: icons only */}
-          <a href="/" className="sm:hidden text-muted-foreground hover:text-foreground" title="Logga in">
-            <LogIn className="h-4 w-4" />
-          </a>
-          <a href="/" className="sm:hidden hover:text-muted-foreground" title="Lägg upp annons">
-            <PlusCircle className="h-4 w-4" />
+          {/* User/Login */}
+          <a 
+            href="/" 
+            className="flex items-center gap-2 p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors"
+            title="Logga in"
+          >
+            <User className="h-5 w-5" strokeWidth={1.5} />
+            <span className="hidden lg:inline text-sm">Logga in</span>
           </a>
           
-          {/* Desktop: text */}
-          <a href="/" className="hidden sm:inline text-muted-foreground hover:text-foreground">
-            Logga in
-          </a>
-          <span className="hidden sm:inline text-border">|</span>
-          <a href="/" className="hidden sm:inline hover:text-muted-foreground">
-            Lägg upp annons
+          {/* Add listing */}
+          <a 
+            href="/" 
+            className="flex items-center gap-2 p-2 rounded-full hover:bg-secondary/80 transition-colors"
+            title="Lägg upp annons"
+          >
+            <PlusCircle className="h-5 w-5" strokeWidth={1.5} />
+            <span className="hidden lg:inline text-sm">Sälj</span>
           </a>
         </div>
+      </div>
+
+      {/* Mobile search row */}
+      <div className="md:hidden border-t border-border px-4 py-2">
+        <SearchDropdown 
+          searchQuery={searchQuery} 
+          onSearch={handleSearch}
+          className="w-full"
+        />
       </div>
     </header>
   );

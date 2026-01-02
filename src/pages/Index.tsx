@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Header } from "@/components/Header";
-import { SearchDropdown } from "@/components/SearchDropdown";
 import { CategoryBar } from "@/components/CategoryBar";
 import { AdGrid } from "@/components/AdGrid";
 import { AdList } from "@/components/AdList";
@@ -72,11 +71,13 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header onCategorySelect={handleCategoryChange} />
+      <Header 
+        onCategorySelect={handleCategoryChange} 
+        searchQuery={searchQuery}
+        onSearch={handleSearch}
+      />
       
-      <SearchDropdown searchQuery={searchQuery} onSearch={handleSearch} />
-      
-      <CategoryBar 
+      <CategoryBar
         selectedCategory={selectedCategory}
         onCategoryChange={handleCategoryChange}
       />
