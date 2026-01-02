@@ -108,26 +108,22 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
       <div className="max-w-[1000px] mx-auto px-4 relative">
         {/* Left arrow - desktop only */}
         {hasOverflow && canScrollLeft && (
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
             onClick={() => scrollTo("left")}
-            className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 bg-background/80 backdrop-blur-sm shadow-sm border border-border hover:bg-background"
+            className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 z-10 h-7 w-7 items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors"
           >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+            <ChevronLeft className="h-4 w-4" strokeWidth={1.5} />
+          </button>
         )}
 
         {/* Right arrow - desktop only */}
         {hasOverflow && canScrollRight && (
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
             onClick={() => scrollTo("right")}
-            className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 bg-background/80 backdrop-blur-sm shadow-sm border border-border hover:bg-background"
+            className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 z-10 h-7 w-7 items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors"
           >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+            <ChevronRight className="h-4 w-4" strokeWidth={1.5} />
+          </button>
         )}
 
         <div
