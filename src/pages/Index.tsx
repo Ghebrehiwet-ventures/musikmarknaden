@@ -41,9 +41,8 @@ export default function Index() {
         ad.location.toLowerCase().includes(searchLower) ||
         (ad.price_text?.toLowerCase().includes(searchLower));
       
-      // Map external category to internal category and filter
-      const internalCategory = mapToInternalCategory(ad.category);
-      const matchesCat = !selectedCategory || internalCategory === selectedCategory;
+      // Backend now saves internal categories directly
+      const matchesCat = !selectedCategory || ad.category === selectedCategory;
       
       return matchesSearchQuery && matchesCat;
     });

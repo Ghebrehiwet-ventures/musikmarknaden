@@ -25,10 +25,63 @@ function parsePrice(priceText: string): { text: string; amount: number | null } 
   return { text: cleanText, amount: null };
 }
 
-function extractCategory(url: string): string {
-  // Extract category from URL path
-  const match = url.match(/musikborsen\.se\/begagnat\/([^/]+)/);
-  return match ? match[1] : 'other';
+// Keyword-based categorization matching internal categories
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  'instrument': [
+    'gitarr', 'guitar', 'fender', 'gibson', 'ibanez', 'epiphone', 'schecter', 'stratocaster', 'telecaster', 'les paul',
+    'bas', 'bass', 'precision', 'jazz bass', 'hofner', 'stingray',
+    'trumm', 'drum', 'virvel', 'snare', 'cymbal', 'hi-hat', 'pearl', 'sonor', 'tama', 'dw', 'zildjian', 'sabian',
+    'piano', 'flygel', 'rhodes', 'wurlitzer', 'saxofon', 'trumpet', 'violin', 'cello', 'flöjt', 'klarinett',
+    'ukulele', 'mandolin', 'banjo', 'munspel', 'dragspel', 'accordion'
+  ],
+  'amplifiers': [
+    'förstärkare', 'amp', 'combo', 'marshall', 'vox', 'mesa', 'boogie',
+    'peavey', 'engl', 'orange', 'blackstar', 'laney', 'ampeg', 'head', 'topteil',
+    'cab', 'cabinet', 'speaker', 'högtalare', 'rörtop', 'tube amp'
+  ],
+  'pedals-effects': [
+    'pedal', 'effekt', 'effect', 'drive', 'overdrive', 'distortion', 'fuzz',
+    'delay', 'reverb', 'echo', 'chorus', 'flanger', 'phaser', 'wah', 'tremolo', 'vibrato',
+    'boss', 'mxr', 'electro-harmonix', 'ehx', 'strymon', 'eventide', 'tc electronic', 
+    'walrus', 'jhs', 'keeley', 'ibanez ts', 'tube screamer', 'big muff', 'looper'
+  ],
+  'synth-modular': [
+    'synth', 'synthesizer', 'moog', 'korg', 'roland', 'yamaha dx', 'prophet', 'juno', 'jupiter',
+    'eurorack', 'modular', 'sequencer', 'arturia', 'nord', 'access virus', 'dave smith',
+    'minilogue', 'monologue', 'microkorg', 'minmoog', 'minimoog', 'op-1', 'teenage engineering',
+    'sampler', 'mpc', 'maschine', 'elektron', 'octatrack', 'digitakt', 'digitone'
+  ],
+  'studio': [
+    'mikrofon', 'microphone', 'neumann', 'shure', 'sennheiser', 'akg', 'rode', 'audio-technica',
+    'interface', 'ljudkort', 'audio interface', 'preamp', 'kompressor', 'compressor', 
+    'eq', 'equalizer', 'mixer', 'mackie', 'mischpult', 'mixing desk',
+    'monitor', 'studiomonitor', 'focusrite', 'universal audio', 'api', 'neve', 'ssl',
+    'scarlett', 'apollo', 'clarett', 'genelec', 'adam', 'yamaha hs', 'krk'
+  ],
+  'dj-live': [
+    'dj', 'turntable', 'skivspelare', 'cdj', 'controller', 'pioneer', 'technics', 'rane', 'serato', 'traktor',
+    'pa', 'pa-system', 'line array', 'subwoofer', 'sub', 'aktiv högtalare', 'powered speaker',
+    'ljus', 'lighting', 'dmx', 'moving head', 'laser', 'strobe', 'fog', 'haze'
+  ],
+  'accessories-parts': [
+    'case', 'väska', 'bag', 'gigbag', 'flightcase', 'hardcase',
+    'stativ', 'stand', 'kabel', 'cable', 'sträng', 'string', 'plektrum', 'pick', 
+    'strap', 'rem', 'gitarrem', 'mikrofonstativ', 'pedalboard', 'pickups', 'pickup',
+    'sadel', 'bridge', 'tuner', 'stämapparat', 'capo', 'slide'
+  ]
+};
+
+function categorizeByKeywords(title: string): string {
+  const titleLower = title.toLowerCase();
+  
+  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    for (const keyword of keywords) {
+      if (titleLower.includes(keyword.toLowerCase())) {
+        return category;
+      }
+    }
+  }
+  return 'other';
 }
 
 async function scrapeMusikborsen(firecrawlApiKey: string): Promise<MusikborsenProduct[]> {
@@ -128,8 +181,8 @@ async function scrapeMusikborsen(firecrawlApiKey: string): Promise<MusikborsenPr
     const imgMatch = productHtml.match(/(?:data-src|src)="([^"]+)"/);
     const imageUrl = imgMatch ? imgMatch[1] : '';
     
-    // Extract category from URL
-    const category = extractCategory(adUrl);
+    // Categorize by title keywords
+    const category = categorizeByKeywords(title);
 
     if (title && adUrl) {
       products.push({
@@ -164,7 +217,7 @@ async function scrapeMusikborsen(firecrawlApiKey: string): Promise<MusikborsenPr
         currentProduct = {
           title: linkMatch[1],
           ad_url: linkMatch[2],
-          category: extractCategory(linkMatch[2]),
+          category: categorizeByKeywords(linkMatch[1]),
           price_text: null,
           price_amount: null,
           location: '',
