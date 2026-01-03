@@ -126,7 +126,7 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
 
   return (
     <div className="border-b border-border py-3">
-      <div className="max-w-[1000px] mx-auto px-4 relative text-left">
+      <div className="max-w-6xl mx-auto px-4 lg:px-6 relative text-left">
         {/* Left arrow - desktop only */}
         {hasOverflow && canScrollLeft && (
           <button
