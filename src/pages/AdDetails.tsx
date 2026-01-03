@@ -328,6 +328,9 @@ export default function AdDetails() {
     }
   };
 
+  // Check if this is a dead link
+  const isDeadLink = details?.isDeadLink;
+
   if (!ad) {
     return (
       <div className="min-h-screen bg-background">
@@ -337,6 +340,34 @@ export default function AdDetails() {
           <Button asChild variant="outline">
             <Link to="/">Tillbaka till startsidan</Link>
           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (isDeadLink) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="flex flex-col items-center justify-center p-8 mt-20 max-w-md mx-auto text-center">
+          <div className="mb-6 p-4 rounded-full bg-destructive/10">
+            <ExternalLink className="h-8 w-8 text-destructive" />
+          </div>
+          <h1 className="text-xl font-bold mb-2">Annonsen finns inte längre</h1>
+          <p className="text-muted-foreground mb-6">
+            Denna annons har tagits bort från {sourceInfo.name}. 
+            Den kan ha blivit såld eller dragits tillbaka av säljaren.
+          </p>
+          <div className="flex gap-3">
+            <Button asChild variant="outline">
+              <Link to="/">Tillbaka till startsidan</Link>
+            </Button>
+            <Button asChild>
+              <a href={ad.ad_url} target="_blank" rel="noopener noreferrer">
+                Kontrollera på {sourceInfo.name}
+              </a>
+            </Button>
+          </div>
         </div>
       </div>
     );

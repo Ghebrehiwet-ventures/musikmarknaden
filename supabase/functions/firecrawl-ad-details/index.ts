@@ -48,6 +48,26 @@ serve(async (req) => {
       const now = new Date();
       const daysSinceUpdate = (now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60 * 24);
       
+      // Check if cached result indicates a dead link
+      if (cached.title === 'Page not found' || cached.description?.includes('Sidan kunde tyvärr inte hittas')) {
+        console.log('× Cached as dead link:', ad_url);
+        
+        // Mark listing as inactive
+        await supabase
+          .from('ad_listings_cache')
+          .update({ is_active: false })
+          .eq('ad_url', ad_url);
+        
+        return new Response(
+          JSON.stringify({
+            error: 'AD_NOT_FOUND',
+            message: 'Annonsen finns inte längre på källsidan',
+            isDeadLink: true,
+          }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
       // Return cached data if less than 7 days old
       if (daysSinceUpdate < 7) {
         console.log('✓ Cache hit for:', ad_url, `(${daysSinceUpdate.toFixed(1)} days old)`);
@@ -116,6 +136,39 @@ serve(async (req) => {
     const adDetails = parseAdDetails(markdown, html, metadata, sourceType);
 
     console.log('Parsed ad details:', adDetails);
+
+    // Check if this is a dead link (404 page from source)
+    const isDeadLink = adDetails.title === 'Page not found' || 
+                       adDetails.description?.includes('Sidan kunde tyvärr inte hittas');
+
+    if (isDeadLink) {
+      console.log('× Detected dead link from scrape:', ad_url);
+      
+      // Mark listing as inactive
+      await supabase
+        .from('ad_listings_cache')
+        .update({ is_active: false })
+        .eq('ad_url', ad_url);
+
+      // Still cache it so we don't keep re-scraping
+      await supabase
+        .from('ad_details_cache')
+        .upsert({
+          ad_url,
+          title: 'Page not found',
+          description: 'Annonsen finns inte längre',
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'ad_url' });
+
+      return new Response(
+        JSON.stringify({
+          error: 'AD_NOT_FOUND',
+          message: 'Annonsen finns inte längre på källsidan',
+          isDeadLink: true,
+        }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Save to cache
     const { error: upsertError } = await supabase
