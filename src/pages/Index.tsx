@@ -123,7 +123,7 @@ export default function Index() {
         onCategoryChange={handleCategoryChange}
       />
       
-      <main className="max-w-[1000px] mx-auto px-4 py-3 text-left">
+      <main className="max-w-6xl mx-auto px-4 lg:px-6 py-3 text-left">
         <div className="flex items-center justify-between mb-2 h-10">
           <span className="text-sm text-muted-foreground">{totalAds} annonser{searchQuery && ` för "${searchQuery}"`}</span>
           <div className="flex items-center gap-2">
