@@ -193,6 +193,27 @@ serve(async (req) => {
       console.log('Cached ad details for:', ad_url);
     }
 
+    // Also update the listing with image and description for faster loading
+    const firstImage = adDetails.images && adDetails.images.length > 0 ? adDetails.images[0] : null;
+    const shortDescription = adDetails.description?.substring(0, 500) || null;
+    
+    if (firstImage || shortDescription) {
+      const updateData: Record<string, string | null> = {};
+      if (firstImage) updateData.image_url = firstImage;
+      if (shortDescription) updateData.description = shortDescription;
+      
+      const { error: listingUpdateError } = await supabase
+        .from('ad_listings_cache')
+        .update(updateData)
+        .eq('ad_url', ad_url);
+      
+      if (listingUpdateError) {
+        console.error('Failed to update listing with image/description:', listingUpdateError);
+      } else {
+        console.log('Updated listing with image:', !!firstImage, 'description:', !!shortDescription);
+      }
+    }
+
     return new Response(
       JSON.stringify({ ...adDetails, fromCache: false }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
