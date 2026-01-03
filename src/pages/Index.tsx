@@ -82,6 +82,11 @@ export default function Index() {
           const dateB = new Date(b.date || 0).getTime();
           return dateA - dateB;
         }
+        case "source": {
+          const sourceA = (a.source_name || '').toLowerCase();
+          const sourceB = (b.source_name || '').toLowerCase();
+          return sourceA.localeCompare(sourceB, 'sv');
+        }
         case "relevance":
         default:
           return 0;
