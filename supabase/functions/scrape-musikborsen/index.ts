@@ -368,16 +368,43 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const body = await req.json().catch(() => ({}));
-    const sourceId = body.source_id;
+    let sourceId = body.source_id || null;
 
-    // Get source details if source_id provided
+    // Get source details - if no source_id provided, look up by name
     let sourceName = 'Musikbörsen';
-    if (sourceId) {
+    if (!sourceId) {
+      const { data: source } = await supabase
+        .from('scraping_sources')
+        .select('id, name')
+        .ilike('name', '%musikbörsen%')
+        .maybeSingle();
+      
+      if (source) {
+        sourceId = source.id;
+        sourceName = source.name;
+        console.log(`Found source: ${sourceName} (${sourceId})`);
+      } else {
+        // Try without special character
+        const { data: source2 } = await supabase
+          .from('scraping_sources')
+          .select('id, name')
+          .ilike('name', '%musikborsen%')
+          .maybeSingle();
+        
+        if (source2) {
+          sourceId = source2.id;
+          sourceName = source2.name;
+          console.log(`Found source: ${sourceName} (${sourceId})`);
+        } else {
+          console.warn('No Musikbörsen source found in scraping_sources table');
+        }
+      }
+    } else {
       const { data: source } = await supabase
         .from('scraping_sources')
         .select('name')
         .eq('id', sourceId)
-        .single();
+        .maybeSingle();
       
       if (source) {
         sourceName = source.name;

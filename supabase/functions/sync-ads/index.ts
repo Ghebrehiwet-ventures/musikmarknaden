@@ -213,7 +213,9 @@ async function fetchAdDetails(supabaseUrl: string, adUrl: string): Promise<any> 
 async function fetchAllAdsFromGearloop(
   firecrawlApiKey: string, 
   supabase: any, 
-  supabaseUrl: string
+  supabaseUrl: string,
+  sourceId: string | null,
+  sourceName: string
 ): Promise<{ allAds: Ad[], newlyInsertedUrls: Set<string> }> {
   const allAds: Ad[] = [];
   const seenUrls = new Set<string>();
@@ -255,7 +257,8 @@ async function fetchAllAdsFromGearloop(
           title: ad.title,
           category: ad.category,
           source_category: category.slug,
-          source_name: 'gearloop',
+          source_id: sourceId,
+          source_name: sourceName,
           location: ad.location,
           date: ad.date,
           price_text: ad.price_text,
@@ -431,12 +434,44 @@ async function runCleanupCategorization(
   return { categorized, failed };
 }
 
-async function syncAds(supabase: any, firecrawlApiKey: string) {
+async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?: string) {
   const startTime = Date.now();
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
   
+  // Get or find source info for Gearloop
+  let sourceId: string | null = providedSourceId || null;
+  let sourceName = 'Gearloop';
+  
+  if (!sourceId) {
+    // Look up source by name
+    const { data: source } = await supabase
+      .from('scraping_sources')
+      .select('id, name')
+      .ilike('name', 'gearloop')
+      .maybeSingle();
+    
+    if (source) {
+      sourceId = source.id;
+      sourceName = source.name;
+      console.log(`Found source: ${sourceName} (${sourceId})`);
+    } else {
+      console.warn('No Gearloop source found in scraping_sources table');
+    }
+  } else {
+    // Get source name from provided ID
+    const { data: source } = await supabase
+      .from('scraping_sources')
+      .select('name')
+      .eq('id', sourceId)
+      .maybeSingle();
+    
+    if (source) {
+      sourceName = source.name;
+    }
+  }
+  
   // Step 1: Fetch all ads from Gearloop using Firecrawl
-  const { allAds, newlyInsertedUrls } = await fetchAllAdsFromGearloop(firecrawlApiKey, supabase, supabaseUrl);
+  const { allAds, newlyInsertedUrls } = await fetchAllAdsFromGearloop(firecrawlApiKey, supabase, supabaseUrl, sourceId, sourceName);
   
   if (allAds.length === 0) {
     console.log('No ads fetched, aborting sync');
@@ -522,9 +557,13 @@ Deno.serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Get source_id from request body if provided
+    const body = await req.json().catch(() => ({}));
+    const sourceId = body.source_id;
 
     console.log('Starting ad sync with Firecrawl...');
-    const result = await syncAds(supabase, firecrawlApiKey);
+    const result = await syncAds(supabase, firecrawlApiKey, sourceId);
 
     console.log('Sync complete:', result);
     
