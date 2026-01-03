@@ -197,11 +197,18 @@ async function fetchAdsForCategory(parsebotApiKey: string, category: string): Pr
   return categoryAds;
 }
 
-async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any): Promise<Ad[]> {
+async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any, supabaseUrl: string): Promise<{ allAds: Ad[], newlyInsertedUrls: Set<string> }> {
   const allAds: Ad[] = [];
   const seenUrls = new Set<string>();
+  const newlyInsertedUrls = new Set<string>();
 
   console.log(`Starting to fetch ads from ${GEARLOOP_CATEGORIES.length} categories...`);
+
+  // Get existing ad URLs to detect truly new ads
+  const { data: existingAds } = await supabase
+    .from('ad_listings_cache')
+    .select('ad_url');
+  const existingUrlSet = new Set<string>(existingAds?.map((a: any) => a.ad_url) || []);
 
   for (const category of GEARLOOP_CATEGORIES) {
     console.log(`Fetching category: ${category}`);
@@ -216,6 +223,11 @@ async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any): P
           seenUrls.add(ad.ad_url);
           allAds.push(ad);
           newAdsInCategory.push(ad);
+          
+          // Track truly new ads (not in DB yet)
+          if (!existingUrlSet.has(ad.ad_url)) {
+            newlyInsertedUrls.add(ad.ad_url);
+          }
         }
       }
       
@@ -223,11 +235,13 @@ async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any): P
       
       // BATCH SAVE after each category to prevent timeout data loss
       if (newAdsInCategory.length > 0) {
+        const internalCategory = mapGearloopCategory(category);
         const adsToSave = newAdsInCategory.map(ad => ({
           ad_url: ad.ad_url,
           ad_path: ad.ad_path,
           title: ad.title,
-          category: mapGearloopCategory(category), // Map to internal category
+          category: internalCategory,
+          source_category: category, // Store original category for mapping
           location: ad.location,
           date: ad.date,
           price_text: ad.price_text,
@@ -255,33 +269,38 @@ async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any): P
     }
   }
 
-  console.log(`Total unique ads fetched and saved: ${allAds.length}`);
-  return allAds;
+  console.log(`Total unique ads fetched: ${allAds.length}, New ads: ${newlyInsertedUrls.size}`);
+  return { allAds, newlyInsertedUrls };
 }
 
-// AI-kategorisera annonser som hamnade i "other"
-async function aiCategorizeOtherAds(supabase: any, supabaseUrl: string) {
-  console.log('Starting AI categorization for "other" ads...');
+// AI-kategorisera nya annonser som hamnade i "other"
+async function aiCategorizeNewOtherAds(supabase: any, supabaseUrl: string, newAdUrls: Set<string>) {
+  if (newAdUrls.size === 0) {
+    console.log('No new ads to AI-categorize');
+    return { categorized: 0, failed: 0 };
+  }
+
+  console.log(`Starting AI categorization for ${newAdUrls.size} new ads...`);
   
-  // Hämta alla annonser med category = "other"
+  // Hämta nya annonser som hamnade i "other"
   const { data: otherAds, error } = await supabase
     .from('ad_listings_cache')
-    .select('id, title, image_url, category')
+    .select('id, title, image_url, category, ad_url')
     .eq('category', 'other')
     .eq('is_active', true)
-    .limit(50); // Begränsa för att undvika timeout
+    .in('ad_url', [...newAdUrls]);
   
   if (error) {
-    console.error('Failed to fetch "other" ads:', error);
+    console.error('Failed to fetch new "other" ads:', error);
     return { categorized: 0, failed: 0 };
   }
   
   if (!otherAds || otherAds.length === 0) {
-    console.log('No "other" ads to categorize');
+    console.log('No new "other" ads to categorize (all already categorized)');
     return { categorized: 0, failed: 0 };
   }
   
-  console.log(`Found ${otherAds.length} ads to AI-categorize`);
+  console.log(`Found ${otherAds.length} new ads in "other" to AI-categorize`);
   
   let categorized = 0;
   let failed = 0;
@@ -299,6 +318,7 @@ async function aiCategorizeOtherAds(supabase: any, supabaseUrl: string) {
         console.error(`Failed to update category for "${ad.title}":`, updateError);
         failed++;
       } else {
+        console.log(`AI: "${ad.title.substring(0, 30)}..." -> ${aiCategory}`);
         categorized++;
       }
     } else {
@@ -379,9 +399,10 @@ async function fetchAdDetails(adUrl: string, firecrawlApiKey: string): Promise<a
 
 async function syncAds(supabase: any, parsebotApiKey: string, firecrawlApiKey: string) {
   const startTime = Date.now();
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
   
   // Step 1: Fetch all ads from parse.bot (saves batch-wise during fetch)
-  const allAds = await fetchAllAdsFromParsebot(parsebotApiKey, supabase);
+  const { allAds, newlyInsertedUrls } = await fetchAllAdsFromParsebot(parsebotApiKey, supabase, supabaseUrl);
   
   if (allAds.length === 0) {
     console.log('No ads fetched, aborting sync');
@@ -417,13 +438,15 @@ async function syncAds(supabase: any, parsebotApiKey: string, firecrawlApiKey: s
   }
 
   // Step 4: Ads are already upserted batch-wise during fetch - skip redundant upsert
-  console.log(`All ${allAds.length} ads already saved during fetch`);
+  console.log(`All ${allAds.length} ads saved, ${newlyInsertedUrls.size} are new`);
 
-  // Step 5: AI categorize ads that ended up in "other"
-  const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  if (supabaseUrl) {
-    const aiResult = await aiCategorizeOtherAds(supabase, supabaseUrl);
-    console.log(`AI categorization: ${aiResult.categorized} ads recategorized`);
+  // Step 5: AI categorize NEW ads that ended up in "other" (automatic categorization)
+  let aiCategorized = 0;
+  if (supabaseUrl && newlyInsertedUrls.size > 0) {
+    console.log(`Running automatic AI categorization on ${newlyInsertedUrls.size} new ads...`);
+    const aiResult = await aiCategorizeNewOtherAds(supabase, supabaseUrl, newlyInsertedUrls);
+    aiCategorized = aiResult.categorized;
+    console.log(`AI auto-categorized ${aiCategorized} new ads`);
   }
 
   // Step 6: Find ads without details in cache
@@ -484,7 +507,8 @@ async function syncAds(supabase: any, parsebotApiKey: string, firecrawlApiKey: s
   const result = {
     success: true,
     totalAds: allAds.length,
-    newAds: adsNeedingDetails.length,
+    newAds: newlyInsertedUrls.size,
+    aiCategorized,
     detailsFetched,
     removedAds: removedUrls.length,
     durationSeconds: duration,
