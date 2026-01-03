@@ -297,7 +297,7 @@ export default function AdminSources() {
                           <span className="text-muted-foreground">Aldrig</span>
                         )}
                       </TableCell>
-                      <TableCell>{(source as any).ad_count ?? source.last_sync_count}</TableCell>
+                      <TableCell>{source.ad_count}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Button
