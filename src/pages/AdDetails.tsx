@@ -1,10 +1,11 @@
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, MapPin, Mail, Phone, Loader2, ChevronLeft, ChevronRight, ExternalLink, User, CheckCircle, Share2 } from "lucide-react";
-import { useState, useMemo, useEffect } from "react";
+import { MapPin, Mail, Phone, Loader2, ChevronLeft, ChevronRight, ExternalLink, User, CheckCircle, Share2, ChevronRight as ChevronRightIcon } from "lucide-react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Header } from "@/components/Header";
 import { getAdDetails, fetchAdListings, Ad } from "@/lib/api";
 import { CATEGORIES, mapToInternalCategory } from "@/lib/categories";
 import { cn } from "@/lib/utils";
@@ -33,7 +34,6 @@ function cleanDescription(input: string, ad: Ad | null): string {
   const locationLower = ad?.location?.toLowerCase() || "";
   const priceText = ad?.price_text?.replace(/\s/g, "") || "";
 
-  // Patterns to filter out UI garbage from scraped content
   const uiPatterns = [
     /\(Esc\)/i,
     /^Rapportera annons$/i,
@@ -78,33 +78,127 @@ function cleanDescription(input: string, ad: Ad | null): string {
     const lineLower = line.toLowerCase();
     const lineNoSpaces = line.replace(/\s/g, "");
 
-    // Check against UI patterns
     for (const pattern of uiPatterns) {
       if (pattern.test(line)) return false;
     }
 
-    // Filter out markdown image syntax
     if (line.startsWith("- [") && line.includes("gearloop.se")) return false;
-
-    // Filter location/price duplicates
     if (lineLower === locationLower) return false;
     if (lineNoSpaces === priceText || lineNoSpaces === priceText.replace("kr", "") + ":-") return false;
 
     return true;
   });
 
-  // Remove markdown links, keep text
   const withoutLinks = filtered.map((line) => line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1"));
-  
-  // Remove consecutive duplicates
   const unique = withoutLinks.filter((line, i, arr) => i === 0 || line !== arr[i - 1]);
 
   return unique.join("\n").trim();
 }
 
+// Similar Ads Carousel Component
+function SimilarAdsCarousel({ ads, currentAdUrl }: { ads: Ad[]; currentAdUrl: string }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const checkScroll = () => {
+    if (scrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+      setCanScrollLeft(scrollLeft > 0);
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 10);
+    }
+  };
+
+  useEffect(() => {
+    checkScroll();
+    const ref = scrollRef.current;
+    if (ref) {
+      ref.addEventListener('scroll', checkScroll);
+      return () => ref.removeEventListener('scroll', checkScroll);
+    }
+  }, [ads]);
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (scrollRef.current) {
+      const scrollAmount = 280;
+      scrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  if (ads.length === 0) return null;
+
+  return (
+    <div className="relative">
+      {/* Navigation Buttons */}
+      {canScrollLeft && (
+        <button
+          onClick={() => scroll('left')}
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-background/90 backdrop-blur border border-border shadow-lg flex items-center justify-center hover:bg-background transition-colors -ml-5"
+          aria-label="Scrolla vänster"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      )}
+      {canScrollRight && (
+        <button
+          onClick={() => scroll('right')}
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-background/90 backdrop-blur border border-border shadow-lg flex items-center justify-center hover:bg-background transition-colors -mr-5"
+          aria-label="Scrolla höger"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+      )}
+
+      {/* Scrollable Container */}
+      <div
+        ref={scrollRef}
+        className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4 lg:mx-0 lg:px-0"
+        style={{ scrollSnapType: 'x mandatory' }}
+      >
+        {ads.map((ad) => (
+          <Link
+            key={ad.ad_url}
+            to={`/ad/${encodeURIComponent(ad.ad_url)}`}
+            className="flex-shrink-0 w-[200px] lg:w-[220px] group"
+            style={{ scrollSnapAlign: 'start' }}
+          >
+            <div className="aspect-square rounded-lg overflow-hidden bg-secondary mb-2">
+              {ad.image_url ? (
+                <img
+                  src={ad.image_url}
+                  alt={ad.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm">
+                  Ingen bild
+                </div>
+              )}
+            </div>
+            <h3 className="font-medium text-sm line-clamp-2 group-hover:text-primary transition-colors">
+              {ad.title}
+            </h3>
+            <p className="text-primary font-bold text-sm mt-1">
+              {ad.price_text || "Pris ej angivet"}
+            </p>
+            {ad.location && (
+              <p className="text-muted-foreground text-xs mt-0.5 flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                {ad.location}
+              </p>
+            )}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AdDetails() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [loadingTime, setLoadingTime] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -171,6 +265,30 @@ export default function AdDetails() {
   const location = ad?.location ?? details?.location ?? "";
   const description = details?.description ? cleanDescription(details.description, ad) : "";
 
+  // Get category info
+  const categoryInfo = useMemo(() => {
+    if (!ad) return null;
+    const internalCat = ad.category && CATEGORIES.some(c => c.id === ad.category)
+      ? ad.category
+      : mapToInternalCategory(ad.title);
+    return CATEGORIES.find(c => c.id === internalCat);
+  }, [ad]);
+
+  // Get similar ads (same category, excluding current)
+  const similarAds = useMemo(() => {
+    if (!ad || !listingsData?.ads || !categoryInfo) return [];
+    
+    return listingsData.ads
+      .filter(a => {
+        if (a.ad_url === ad.ad_url) return false;
+        const cat = a.category && CATEGORIES.some(c => c.id === a.category)
+          ? a.category
+          : mapToInternalCategory(a.title);
+        return cat === categoryInfo.id;
+      })
+      .slice(0, 12);
+  }, [ad, listingsData?.ads, categoryInfo]);
+
   const nextImage = () => {
     if (images.length === 0) return;
     setCurrentImageIndex((prev) => (prev + 1) % images.length);
@@ -181,7 +299,6 @@ export default function AdDetails() {
     setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
   };
 
-  // Touch handlers for swipe
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart(e.touches[0].clientX);
   };
@@ -213,63 +330,48 @@ export default function AdDetails() {
 
   if (!ad) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-        <p className="text-muted-foreground mb-4">Annonsen hittades inte</p>
-        <Button asChild variant="outline">
-          <Link to="/">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Tillbaka
-          </Link>
-        </Button>
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="flex flex-col items-center justify-center p-8 mt-20">
+          <p className="text-muted-foreground mb-4">Annonsen hittades inte</p>
+          <Button asChild variant="outline">
+            <Link to="/">Tillbaka till startsidan</Link>
+          </Button>
+        </div>
       </div>
     );
   }
 
-  const categoryInfo = (() => {
-    const internalCat = ad.category && CATEGORIES.some(c => c.id === ad.category)
-      ? ad.category
-      : mapToInternalCategory(ad.title);
-    return CATEGORIES.find(c => c.id === internalCat);
-  })();
-
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
-      {/* Header - Mobile */}
-      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border lg:hidden">
-        <div className="flex items-center justify-between px-4 h-14">
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => navigate(-1)}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          
-          <Button variant="ghost" size="icon" onClick={handleShare}>
-            <Share2 className="h-5 w-5" />
-          </Button>
-        </div>
-      </header>
+      {/* Main Header with Search */}
+      <Header />
 
-      {/* Desktop Header */}
-      <header className="hidden lg:block border-b border-border bg-background">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => navigate(-1)}
-            className="gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Tillbaka till annonser
-          </Button>
-          
-          <Button variant="ghost" size="sm" onClick={handleShare} className="gap-2">
-            <Share2 className="h-4 w-4" />
-            Dela
-          </Button>
+      {/* Breadcrumb Navigation */}
+      <nav className="border-b border-border bg-background">
+        <div className="max-w-6xl mx-auto px-4 lg:px-6 py-3">
+          <div className="flex items-center gap-2 text-sm">
+            <Link 
+              to="/" 
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Alla kategorier
+            </Link>
+            {categoryInfo && (
+              <>
+                <ChevronRightIcon className="h-4 w-4 text-muted-foreground" />
+                <Link 
+                  to={`/?category=${categoryInfo.id}`}
+                  className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+                >
+                  <categoryInfo.icon className="h-4 w-4" />
+                  {categoryInfo.label}
+                </Link>
+              </>
+            )}
+          </div>
         </div>
-      </header>
+      </nav>
 
       {/* Main Content */}
       <main className="lg:max-w-6xl lg:mx-auto lg:px-6 lg:py-8">
@@ -277,7 +379,7 @@ export default function AdDetails() {
           
           {/* Left Column - Images & Description */}
           <div>
-            {/* Image Gallery - Mobile: Full width, Desktop: Rounded */}
+            {/* Image Gallery */}
             <div 
               className="relative bg-secondary aspect-square lg:aspect-[4/3] lg:rounded-xl overflow-hidden"
               onTouchStart={handleTouchStart}
@@ -294,6 +396,15 @@ export default function AdDetails() {
                   Ingen bild
                 </div>
               )}
+
+              {/* Share button on mobile */}
+              <button
+                onClick={handleShare}
+                className="lg:hidden absolute top-4 right-4 h-10 w-10 rounded-full bg-background/80 backdrop-blur flex items-center justify-center"
+                aria-label="Dela"
+              >
+                <Share2 className="h-5 w-5" />
+              </button>
 
               {images.length > 1 && (
                 <>
@@ -314,7 +425,7 @@ export default function AdDetails() {
                   </button>
 
                   {/* Image counter */}
-                  <div className="absolute top-4 right-4 bg-background/80 backdrop-blur rounded-full px-3 py-1.5 text-sm font-medium">
+                  <div className="absolute top-4 left-4 lg:left-auto lg:right-4 bg-background/80 backdrop-blur rounded-full px-3 py-1.5 text-sm font-medium">
                     {currentImageIndex + 1} / {images.length}
                   </div>
 
@@ -495,6 +606,11 @@ export default function AdDetails() {
                       )}
                     </div>
                   )}
+
+                  <Button variant="ghost" size="sm" onClick={handleShare} className="w-full gap-2">
+                    <Share2 className="h-4 w-4" />
+                    Dela annons
+                  </Button>
                 </div>
               </div>
 
@@ -518,6 +634,24 @@ export default function AdDetails() {
             </div>
           </div>
         </div>
+
+        {/* Similar Ads Section */}
+        {similarAds.length > 0 && (
+          <section className="mt-8 lg:mt-12 px-4 lg:px-0">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg lg:text-xl font-semibold">Du kanske också gillar</h2>
+              {categoryInfo && (
+                <Link 
+                  to={`/?category=${categoryInfo.id}`}
+                  className="text-sm text-primary hover:underline"
+                >
+                  Visa alla
+                </Link>
+              )}
+            </div>
+            <SimilarAdsCarousel ads={similarAds} currentAdUrl={ad.ad_url} />
+          </section>
+        )}
       </main>
 
       {/* Mobile Sticky CTA */}
