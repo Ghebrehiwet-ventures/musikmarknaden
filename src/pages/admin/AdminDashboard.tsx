@@ -19,6 +19,9 @@ export default function AdminDashboard() {
     processed: number;
     updated: number;
     remaining: number;
+    failed: number;
+    skippedLow: number;
+    stillOther: number;
   } | null>(null);
   const [otherCount, setOtherCount] = useState<number>(0);
   const { toast } = useToast();
@@ -29,7 +32,10 @@ export default function AdminDashboard() {
       .select('*', { count: 'exact', head: true })
       .eq('category', 'other')
       .eq('is_active', true);
-    setOtherCount(count || 0);
+
+    const next = count || 0;
+    setOtherCount(next);
+    return next;
   };
 
   const fetchData = async () => {
@@ -58,19 +64,21 @@ export default function AdminDashboard() {
 
   const handleRunAICategorization = async () => {
     setCategorizing(true);
-    setCategorizationProgress({ processed: 0, updated: 0, remaining: otherCount });
-    
+    setCategorizationProgress({ processed: 0, updated: 0, remaining: otherCount, failed: 0, skippedLow: 0, stillOther: 0 });
+
     let cursor: string | null = null;
     let totalProcessed = 0;
     let totalUpdated = 0;
-    let batchCount = 0;
-    const maxBatches = 10; // Limit to 10 batches per click
+    let totalFailed = 0;
+    let totalSkippedLow = 0;
+    let totalStillOther = 0;
 
     try {
-      while (batchCount < maxBatches) {
-        batchCount++;
-        console.log(`Running batch ${batchCount}...`);
+      // Kör tills backend säger att den är klar, men bryt om det tar orimligt länge.
+      const startedAt = Date.now();
+      const MAX_RUNTIME_MS = 8 * 60 * 1000; // 8 minuter per körning
 
+      while (Date.now() - startedAt < MAX_RUNTIME_MS) {
         const result = await adminApi.runBatchCategorize({
           category: 'other',
           limit: 100,
@@ -79,6 +87,9 @@ export default function AdminDashboard() {
 
         totalProcessed += result.processed;
         totalUpdated += result.updated;
+        totalFailed += result.failed;
+        totalSkippedLow += result.skipped_low_confidence ?? 0;
+        totalStillOther += result.skipped_still_other ?? 0;
         cursor = result.next_cursor;
 
         // Update progress
@@ -87,31 +98,26 @@ export default function AdminDashboard() {
           processed: totalProcessed,
           updated: totalUpdated,
           remaining: newRemaining,
+          failed: totalFailed,
+          skippedLow: totalSkippedLow,
+          stillOther: totalStillOther,
         });
 
         if (result.completed || !cursor) {
+          const finalOtherCount = await fetchOtherCount();
           toast({
             title: 'AI-kategorisering klar',
-            description: `Bearbetade ${totalProcessed} annonser, uppdaterade ${totalUpdated}`,
+            description: `Uppdaterade ${totalUpdated}. Kvar i Övrigt: ${finalOtherCount}.`,
           });
           break;
         }
 
         // Small delay between batches
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 800));
       }
 
-      if (batchCount >= maxBatches && cursor) {
-        toast({
-          title: 'Pausar',
-          description: `Kör ${maxBatches} batchar. Klicka igen för att fortsätta.`,
-        });
-      }
-
-      // Refresh counts
-      fetchOtherCount();
+      // Refresh stats
       fetchData();
-
     } catch (error) {
       toast({
         title: 'AI-kategorisering misslyckades',
@@ -227,11 +233,14 @@ export default function AdminDashboard() {
           <CardContent>
             {categorizationProgress && (
               <div className="mb-4 p-3 bg-muted rounded-lg">
-                <div className="flex justify-between text-sm mb-2">
-                  <span>Bearbetade: {categorizationProgress.processed}</span>
-                  <span>Uppdaterade: {categorizationProgress.updated}</span>
-                  <span>Kvar: ~{categorizationProgress.remaining}</span>
-                </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm mb-2">
+                    <span>Bearbetade: {categorizationProgress.processed}</span>
+                    <span>Uppdaterade: {categorizationProgress.updated}</span>
+                    <span>Ej ändrade (AI sa Övrigt): {categorizationProgress.stillOther}</span>
+                    <span>Low confidence: {categorizationProgress.skippedLow}</span>
+                    <span>Fel: {categorizationProgress.failed}</span>
+                    <span>Kvar (ca): ~{categorizationProgress.remaining}</span>
+                  </div>
                 <div className="w-full bg-background rounded-full h-2">
                   <div 
                     className="bg-primary h-2 rounded-full transition-all duration-300"

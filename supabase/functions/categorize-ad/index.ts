@@ -30,15 +30,17 @@ interface CategorizeResponse {
   reasoning?: string;
 }
 
+async function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function categorizeWithAI(
   apiKey: string,
   title: string,
   description?: string,
   imageUrl?: string
 ): Promise<CategorizeResponse> {
-  const categoryList = CATEGORIES.map(c => 
-    `- ${c.id}: ${c.label} (${c.examples})`
-  ).join('\n');
+  const categoryList = CATEGORIES.map((c) => `- ${c.id}: ${c.label} (${c.examples})`).join('\n');
 
   const systemPrompt = `Du är en expert på musikinstrument och studioutrustning. Din uppgift är att kategorisera produkter korrekt.
 
@@ -95,54 +97,77 @@ Svara ENDAST med ett JSON-objekt i detta format:
   const userContent: any[] = [
     {
       type: 'text',
-      text: `Kategorisera denna produkt:
-
-Titel: ${title}${description ? `\nBeskrivning: ${description}` : ''}
-
-Svara med JSON.`
-    }
+      text: `Kategorisera denna produkt:\n\nTitel: ${title}${description ? `\nBeskrivning: ${description}` : ''}\n\nSvara med JSON.`,
+    },
   ];
 
   // Add image if available and valid
   // Only include images from known valid sources
-  if (imageUrl && 
-      imageUrl.startsWith('http') && 
-      !imageUrl.includes('example') &&
-      (imageUrl.includes('musikborsen.se') || 
-       imageUrl.includes('cdn.') ||
-       imageUrl.includes('images.'))) {
+  if (
+    imageUrl &&
+    imageUrl.startsWith('http') &&
+    !imageUrl.includes('example') &&
+    (imageUrl.includes('musikborsen.se') || imageUrl.includes('cdn.') || imageUrl.includes('images.'))
+  ) {
     userContent.push({
       type: 'image_url',
-      image_url: { url: imageUrl }
+      image_url: { url: imageUrl },
     });
   }
 
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userContent }
-      ],
-      max_tokens: 200,
-    }),
-  });
+  const requestBody = {
+    model: 'google/gemini-2.5-flash',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent },
+    ],
+    max_tokens: 200,
+  };
 
-  if (!response.ok) {
-    const error = await response.text();
-    console.error('AI Gateway error:', response.status, error);
-    throw new Error(`AI Gateway error: ${response.status}`);
+  // Retry transient gateway failures (502/5xx/429)
+  const maxAttempts = 3;
+  let lastStatus = 0;
+  let lastText = '';
+  let content = '';
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      content = data.choices?.[0]?.message?.content || '';
+      console.log('AI response:', content);
+      break;
+    }
+
+    lastStatus = response.status;
+    lastText = await response.text().catch(() => '');
+    console.error('AI Gateway error:', lastStatus, lastText);
+
+    // Surface billing/rate-limit clearly
+    if (lastStatus === 402 || lastStatus === 429) {
+      throw new Error(`AI Gateway error: ${lastStatus}`);
+    }
+
+    // Retry on transient 5xx
+    const isTransient = lastStatus >= 500;
+    if (!isTransient || attempt === maxAttempts) {
+      throw new Error(`AI Gateway error: ${lastStatus}`);
+    }
+
+    await delay(400 * attempt);
   }
 
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || '';
-  
-  console.log('AI response:', content);
+  if (!content) {
+    throw new Error(`AI Gateway error: ${lastStatus || 500}`);
+  }
 
   // Label to ID mapping for tolerant parsing
   const labelToId: Record<string, string> = {};
@@ -253,7 +278,7 @@ Deno.serve(async (req) => {
 
   try {
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-    
+
     if (!lovableApiKey) {
       throw new Error('LOVABLE_API_KEY not configured');
     }
@@ -262,10 +287,10 @@ Deno.serve(async (req) => {
     const { title, description, image_url } = body;
 
     if (!title) {
-      return new Response(
-        JSON.stringify({ error: 'Title is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return new Response(JSON.stringify({ error: 'Title is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     console.log(`Categorizing: "${title}"`);
@@ -274,16 +299,38 @@ Deno.serve(async (req) => {
 
     console.log(`Category: ${result.category} (${result.confidence})`);
 
-    return new Response(
-      JSON.stringify(result),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
+    return new Response(JSON.stringify(result), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     console.error('Categorize error:', error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+
+    // Bubble up rate-limit / billing as their real status so callers can retry/backoff
+    if (msg.includes('AI Gateway error: 429')) {
+      return new Response(JSON.stringify({ error: 'Rate limits exceeded, please try again later.' }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (msg.includes('AI Gateway error: 402')) {
+      return new Response(JSON.stringify({ error: 'Payment required for AI usage.' }), {
+        status: 402,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (msg.includes('AI Gateway error: 502')) {
+      return new Response(JSON.stringify({ error: 'AI service temporarily unavailable (502). Please retry.' }), {
+        status: 502,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });

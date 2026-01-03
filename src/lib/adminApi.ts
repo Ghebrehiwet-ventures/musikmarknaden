@@ -118,6 +118,9 @@ export const adminApi = {
     updated: number; 
     unchanged: number;
     failed: number;
+    skipped_low_confidence?: number;
+    skipped_still_other?: number;
+    elapsed_ms?: number;
     next_cursor: string | null;
     completed: boolean;
     changes?: Array<{ title: string; from: string; to: string; confidence: string }>;
