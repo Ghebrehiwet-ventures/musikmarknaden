@@ -23,7 +23,7 @@ export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderP
           <MobileMenu onCategorySelect={onCategorySelect} />
           <a href="/" className="flex items-center gap-2 font-semibold text-sm hover:text-muted-foreground transition-colors">
             <Guitar className="h-5 w-5" />
-            <span className="hidden sm:inline">Musikmarknaden</span>
+            <span className="hidden sm:inline">Musikmarknaden.com</span>
           </a>
         </div>
 
