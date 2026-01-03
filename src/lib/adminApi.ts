@@ -50,12 +50,6 @@ export interface SourceCategoryInfo {
 async function adminFetch<T>(action: string, body?: Record<string, unknown>, params?: Record<string, string>): Promise<T> {
   const queryParams = new URLSearchParams({ action, ...params });
   
-  const { data, error } = await supabase.functions.invoke('admin-sources', {
-    body: body ?? {},
-    headers: {},
-  });
-
-  // The function uses query params, so we need to call it differently
   const session = await supabase.auth.getSession();
   const token = session.data.session?.access_token;
 
@@ -66,13 +60,13 @@ async function adminFetch<T>(action: string, body?: Record<string, unknown>, par
   const response = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-sources?${queryParams}`,
     {
-      method: body ? 'POST' : 'GET',
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: JSON.stringify(body ?? {}),
     }
   );
 
