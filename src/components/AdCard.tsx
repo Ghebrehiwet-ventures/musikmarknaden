@@ -1,20 +1,19 @@
+import { Link } from "react-router-dom";
 import { Ad } from "@/lib/api";
 
 interface AdCardProps {
   ad: Ad;
-  onClick: () => void;
-  index: number;
   onHoverStart?: () => void;
   onHoverEnd?: () => void;
 }
 
-export function AdCard({ ad, onClick, onHoverStart, onHoverEnd }: AdCardProps) {
+export function AdCard({ ad, onHoverStart, onHoverEnd }: AdCardProps) {
   return (
-    <article 
-      onClick={onClick}
+    <Link
+      to={`/ad/${encodeURIComponent(ad.ad_url)}`}
       onMouseEnter={onHoverStart}
       onMouseLeave={onHoverEnd}
-      className="cursor-pointer border border-border hover:border-foreground/30 transition-colors"
+      className="block border border-border hover:border-foreground/30 transition-colors"
     >
       <div className="aspect-square bg-muted">
         <img 
@@ -38,6 +37,6 @@ export function AdCard({ ad, onClick, onHoverStart, onHoverEnd }: AdCardProps) {
           {ad.location}{ad.date && ` · ${ad.date}`}
         </p>
       </div>
-    </article>
+    </Link>
   );
 }

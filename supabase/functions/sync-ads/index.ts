@@ -189,6 +189,27 @@ async function fetchCategoryWithFirecrawl(
   }
 }
 
+// Fetch ad details using firecrawl-ad-details function
+async function fetchAdDetails(supabaseUrl: string, adUrl: string): Promise<any> {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/firecrawl-ad-details`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ad_url: adUrl }),
+    });
+
+    if (!response.ok) {
+      console.error(`Failed to fetch details for ${adUrl}: ${response.status}`);
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error(`Error fetching details for ${adUrl}:`, error);
+    return null;
+  }
+}
+
 async function fetchAllAdsFromGearloop(
   firecrawlApiKey: string, 
   supabase: any, 
@@ -264,6 +285,37 @@ async function fetchAllAdsFromGearloop(
 
   console.log(`Total unique ads fetched: ${allAds.length}, New ads: ${newlyInsertedUrls.size}`);
   return { allAds, newlyInsertedUrls };
+}
+
+// Pre-load ad details for new ads (runs in background)
+async function preloadAdDetails(supabase: any, supabaseUrl: string, newAdUrls: Set<string>, limit: number = 10) {
+  if (newAdUrls.size === 0) {
+    console.log('No new ads to preload details for');
+    return { preloaded: 0, failed: 0 };
+  }
+
+  const urlsToProcess = [...newAdUrls].slice(0, limit);
+  console.log(`Preloading details for ${urlsToProcess.length} new ads...`);
+
+  let preloaded = 0;
+  let failed = 0;
+
+  for (const adUrl of urlsToProcess) {
+    const details = await fetchAdDetails(supabaseUrl, adUrl);
+    
+    if (details && details.title) {
+      preloaded++;
+      console.log(`Preloaded: ${details.title?.substring(0, 30)}...`);
+    } else {
+      failed++;
+    }
+    
+    // Rate limiting
+    await delay(500);
+  }
+
+  console.log(`Preload complete: ${preloaded} loaded, ${failed} failed`);
+  return { preloaded, failed };
 }
 
 // AI-kategorisera nya annonser som hamnade i "other"
@@ -427,6 +479,9 @@ async function syncAds(supabase: any, firecrawlApiKey: string) {
   // Step 5: Run cleanup categorization (process 20 existing "other" ads per sync)
   const cleanupResult = await runCleanupCategorization(supabase, supabaseUrl, 20);
 
+  // Step 6: Preload ad details for new ads (up to 15 per sync to avoid timeouts)
+  const preloadResult = await preloadAdDetails(supabase, supabaseUrl, newlyInsertedUrls, 15);
+
   const duration = Math.round((Date.now() - startTime) / 1000);
   
   return {
@@ -435,6 +490,7 @@ async function syncAds(supabase: any, firecrawlApiKey: string) {
     newAds: newlyInsertedUrls.size,
     removedAds: removedUrls.length,
     aiCategorized: aiNewResult.categorized + cleanupResult.categorized,
+    detailsPreloaded: preloadResult.preloaded,
     duration: `${duration}s`,
   };
 }
