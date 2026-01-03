@@ -164,9 +164,15 @@ function parseAdDetails(
   const title = (metadata.title as string)?.split(' - ')[0]?.split(' | ')[0] || extractTitle(markdown) || 'Okänd titel';
   
   // Extract description with source-specific cleaning
-  const description = sourceType === 'musikborsen' 
-    ? extractMusikborsenDescription(markdown)
-    : extractGearloopDescription(markdown);
+  let description: string;
+  if (sourceType === 'gearloop') {
+    // For Gearloop, extract from HTML to get clean description
+    description = extractGearloopDescriptionFromHtml(html);
+  } else if (sourceType === 'musikborsen') {
+    description = extractMusikborsenDescription(markdown);
+  } else {
+    description = extractGearloopDescription(markdown);
+  }
   
   // Extract price
   const priceMatch = markdown.match(/(\d[\d\s]*):?-?\s*kr/i) || markdown.match(/(\d[\d\s]*)\s*kr/i);
@@ -181,8 +187,9 @@ function parseAdDetails(
   // Extract images with source-specific patterns
   const images = extractImages(html, sourceType);
   
-  const contactInfo = extractContactInfo(markdown, html);
-  const sellerInfo = sourceType === 'gearloop' ? extractSellerInfo(markdown) : undefined;
+  // Extract contact info - pass sourceType to avoid fabricated phone numbers
+  const contactInfo = extractContactInfo(markdown, html, sourceType);
+  const sellerInfo = sourceType === 'gearloop' ? extractSellerInfoFromHtml(html) : undefined;
   const condition = extractCondition(markdown);
 
   return {
@@ -346,7 +353,74 @@ function extractMusikborsenDescription(markdown: string): string {
   return desc;
 }
 
-// Gearloop-specific description extraction
+// Gearloop-specific description extraction from HTML
+// This extracts ONLY the actual ad description, not seller panel or UI elements
+function extractGearloopDescriptionFromHtml(html: string): string {
+  // Look for the main description paragraph with class "mt-6 break-words"
+  // This is where Gearloop puts the actual ad description
+  const descMatch = html.match(/<p[^>]*class="[^"]*mt-6[^"]*break-words[^"]*"[^>]*>([\s\S]*?)<\/p>/i);
+  
+  if (descMatch && descMatch[1]) {
+    let desc = descMatch[1];
+    
+    // Remove HTML tags but preserve line breaks
+    desc = desc.replace(/<br\s*\/?>/gi, '\n');
+    desc = desc.replace(/<[^>]+>/g, '');
+    
+    // Decode HTML entities
+    desc = desc.replace(/&nbsp;/g, ' ');
+    desc = desc.replace(/&amp;/g, '&');
+    desc = desc.replace(/&lt;/g, '<');
+    desc = desc.replace(/&gt;/g, '>');
+    desc = desc.replace(/&quot;/g, '"');
+    desc = desc.replace(/&#39;/g, "'");
+    
+    // Clean up whitespace
+    desc = desc.trim();
+    
+    if (desc && desc.length > 5) {
+      console.log('Gearloop: Extracted description from HTML, length:', desc.length);
+      return desc;
+    }
+  }
+  
+  // Fallback: try to find description in article section, avoiding seller info
+  const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
+  if (articleMatch) {
+    // Look for any paragraph that's not in the seller section
+    const articleHtml = articleMatch[1];
+    
+    // Find paragraphs that contain actual content (not just single words or UI elements)
+    const paragraphRegex = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+    let match;
+    const candidates: string[] = [];
+    
+    while ((match = paragraphRegex.exec(articleHtml)) !== null) {
+      let text = match[1];
+      // Skip if it contains typical UI/seller elements
+      if (/Medlem sedan|Visningar:|Kan skickas|Skicka meddelande|text-gray-600/i.test(text)) continue;
+      if (/avatar|rounded-full/i.test(match[0])) continue;
+      
+      text = text.replace(/<[^>]+>/g, '').trim();
+      // Must be substantial text (more than 20 chars and not just a price/date)
+      if (text.length > 20 && !/^\d+\s*kr$/i.test(text) && !/^\d{1,2}\s+(jan|feb|mar|apr)/i.test(text)) {
+        candidates.push(text);
+      }
+    }
+    
+    if (candidates.length > 0) {
+      // Return the longest candidate as it's likely the description
+      const desc = candidates.reduce((a, b) => a.length > b.length ? a : b);
+      console.log('Gearloop: Extracted description from article fallback, length:', desc.length);
+      return desc;
+    }
+  }
+  
+  console.log('Gearloop: No description found in HTML');
+  return 'Ingen beskrivning tillgänglig';
+}
+
+// Legacy markdown-based extraction (kept for non-Gearloop sources)
 function extractGearloopDescription(markdown: string): string {
   const lines = markdown.split('\n');
   const contentLines: string[] = [];
@@ -520,9 +594,27 @@ function extractImages(html: string, sourceType: string): string[] {
   return images;
 }
 
-function extractContactInfo(markdown: string, _html: string): { email?: string; phone?: string } {
+function extractContactInfo(
+  markdown: string, 
+  _html: string, 
+  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'unknown'
+): { email?: string; phone?: string } {
   const contactInfo: { email?: string; phone?: string } = {};
   
+  // For Gearloop: They do NOT show phone numbers publicly (requires login to message)
+  // So we should NOT extract phone numbers from random text that might match patterns
+  if (sourceType === 'gearloop') {
+    // Only extract email if explicitly in the description (rare)
+    const emailMatch = markdown.match(/[\w.-]+@[\w.-]+\.\w+/);
+    if (emailMatch) {
+      contactInfo.email = emailMatch[0];
+    }
+    // No phone extraction for Gearloop - they don't display it
+    console.log('Gearloop: Skipping phone extraction (not publicly displayed)');
+    return contactInfo;
+  }
+  
+  // For other sources (Musikbörsen, etc.), extract normally
   const emailMatch = markdown.match(/[\w.-]+@[\w.-]+\.\w+/);
   if (emailMatch) {
     contactInfo.email = emailMatch[0];
@@ -546,28 +638,37 @@ function extractContactInfo(markdown: string, _html: string): { email?: string; 
   return contactInfo;
 }
 
-function extractSellerInfo(markdown: string): { name?: string; username?: string } | undefined {
-  const lines = markdown.split('\n');
-  let name: string | undefined;
-  let username: string | undefined;
+// Extract seller info from HTML for Gearloop
+function extractSellerInfoFromHtml(html: string): { name?: string; username?: string } | undefined {
+  // Look for the seller section in Gearloop's HTML
+  // The username is typically in a <p class="text-gray-600"> near "Medlem sedan"
   
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (line.toLowerCase().includes('medlem sedan')) {
-      if (i >= 2) {
-        username = lines[i - 1]?.trim();
-        name = lines[i - 2]?.trim();
-      }
-      break;
+  // Find the seller panel section
+  const sellerMatch = html.match(/<p[^>]*class="[^"]*text-gray-600[^"]*"[^>]*>([^<]+)&nbsp;<\/p>/i);
+  
+  let username: string | undefined;
+  if (sellerMatch && sellerMatch[1]) {
+    username = sellerMatch[1].trim();
+    // Clean up any HTML entities
+    username = username.replace(/&nbsp;/g, '').trim();
+    
+    // Skip if it looks like UI text
+    if (username && !/Medlem sedan|Visningar|Kan skickas/i.test(username) && username.length > 1) {
+      console.log('Gearloop: Extracted seller username from HTML:', username);
+      return { username };
     }
   }
   
-  if (name && /^[×x]$/i.test(name)) name = undefined;
-  if (username && /^[×x]$/i.test(username)) username = undefined;
-  
-  if (name || username) {
-    return { name, username };
+  // Fallback: try to find username near avatar section
+  const avatarSectionMatch = html.match(/class="[^"]*rounded-full[^"]*"[\s\S]{0,500}?<p[^>]*>([^<]+)<\/p>/i);
+  if (avatarSectionMatch && avatarSectionMatch[1]) {
+    username = avatarSectionMatch[1].replace(/&nbsp;/g, '').trim();
+    if (username && username.length > 1 && !/Medlem sedan|Visningar/i.test(username)) {
+      console.log('Gearloop: Extracted seller username from avatar section:', username);
+      return { username };
+    }
   }
+  
   return undefined;
 }
 
