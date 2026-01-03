@@ -596,7 +596,7 @@ function extractImages(html: string, sourceType: string): string[] {
 
 function extractContactInfo(
   markdown: string, 
-  _html: string, 
+  html: string, 
   sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'unknown'
 ): { email?: string; phone?: string } {
   const contactInfo: { email?: string; phone?: string } = {};
@@ -614,7 +614,41 @@ function extractContactInfo(
     return contactInfo;
   }
   
-  // For other sources (Musikbörsen, etc.), extract normally
+  // For Musikbörsen: Extract from the seller contact section specifically
+  if (sourceType === 'musikborsen') {
+    // Look for "E-post:" followed by email in the seller section
+    // The format is "E-post: malmo@musikborsen.se" or similar
+    const emailLabelMatch = markdown.match(/E-post:\s*([\w.-]+@[\w.-]+\.\w+)/i);
+    if (emailLabelMatch) {
+      contactInfo.email = emailLabelMatch[1];
+      console.log('Musikbörsen: Extracted email from E-post label:', contactInfo.email);
+    } else {
+      // Fallback: try HTML - look for email near "Säljes av" section
+      const sellerSectionMatch = html.match(/Säljes\s+av[\s\S]{0,500}?([\w.-]+@[\w.-]+\.se)/i);
+      if (sellerSectionMatch) {
+        contactInfo.email = sellerSectionMatch[1];
+        console.log('Musikbörsen: Extracted email from HTML seller section:', contactInfo.email);
+      } else {
+        // Last fallback: look for store-specific emails (not info@)
+        const storeEmailMatch = markdown.match(/((?:malmo|goteborg|stockholm|orebro|helsingborg|uppsala)@musikborsen\.se)/i);
+        if (storeEmailMatch) {
+          contactInfo.email = storeEmailMatch[1].toLowerCase();
+          console.log('Musikbörsen: Extracted store-specific email:', contactInfo.email);
+        }
+      }
+    }
+    
+    // Look for "Telefon:" followed by phone number
+    const phoneLabelMatch = markdown.match(/Telefon:\s*([\d\s-]+)/i);
+    if (phoneLabelMatch) {
+      contactInfo.phone = phoneLabelMatch[1].trim();
+      console.log('Musikbörsen: Extracted phone from Telefon label:', contactInfo.phone);
+    }
+    
+    return contactInfo;
+  }
+  
+  // For other sources, extract normally
   const emailMatch = markdown.match(/[\w.-]+@[\w.-]+\.\w+/);
   if (emailMatch) {
     contactInfo.email = emailMatch[0];
