@@ -4,6 +4,7 @@ import { ArrowLeft, MapPin, Mail, Phone, Loader2, ChevronLeft, ChevronRight, Ext
 import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getAdDetails, fetchAdListings, Ad } from "@/lib/api";
 import { CATEGORIES, mapToInternalCategory } from "@/lib/categories";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,7 @@ function getSourceInfo(url: string): { name: string; domain: string } {
   }
 }
 
-function cleanDescription(input: string, ad: Ad | null) {
+function cleanDescription(input: string, ad: Ad | null): string {
   const lines = input
     .split("\n")
     .map((l) => l.trim())
@@ -32,29 +33,70 @@ function cleanDescription(input: string, ad: Ad | null) {
   const locationLower = ad?.location?.toLowerCase() || "";
   const priceText = ad?.price_text?.replace(/\s/g, "") || "";
 
+  // Patterns to filter out UI garbage from scraped content
+  const uiPatterns = [
+    /\(Esc\)/i,
+    /^Rapportera annons$/i,
+    /^Rapportera$/i,
+    /^AvbrytSkicka$/i,
+    /^Avbryt$/i,
+    /^Skicka$/i,
+    /^Skicka meddelande$/i,
+    /^Typ:\s*SpamBedrägeriAnnat$/i,
+    /Ange en kort beskrivning varför du vill rapportera/i,
+    /^Ny medlem$/i,
+    /^Kan skickas$/i,
+    /^Kan mötas$/i,
+    /^Betalning:/i,
+    /^Frakt:/i,
+    /^×$/,
+    /^x$/i,
+    /^\d{1,2}:\d{2}$/,
+    /^\d[\d\s]*:-?$/,
+    /^\d{1,2}\s+(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)$/i,
+    /^\d[\d\s]*kr\s*\d{1,2}\s*(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)/i,
+    /^Skick:/i,
+    /^(säljes|köpes)$/i,
+    /sveriges marknadsplats/i,
+    /om gearloop/i,
+    /^!\[/,
+    /^×!/,
+    /gearloop\.se/i,
+    /^Visa telefonnummer$/i,
+    /^Visa e-post$/i,
+    /^Kontakta säljare$/i,
+    /^Säljare$/i,
+    /^Annonsera$/i,
+    /^Logga in$/i,
+    /^Registrera$/i,
+    /^Mina sidor$/i,
+    /^Hem$/i,
+    /^Sök$/i,
+  ];
+
   const filtered = lines.filter((line) => {
     const lineLower = line.toLowerCase();
     const lineNoSpaces = line.replace(/\s/g, "");
-    
-    if (line.startsWith("![]") || line.startsWith("![") || line.startsWith("×!")) return false;
+
+    // Check against UI patterns
+    for (const pattern of uiPatterns) {
+      if (pattern.test(line)) return false;
+    }
+
+    // Filter out markdown image syntax
     if (line.startsWith("- [") && line.includes("gearloop.se")) return false;
-    if (lineLower.includes("sveriges marknadsplats")) return false;
-    if (lineLower.includes("om gearloop")) return false;
-    if (/^(säljes|köpes)$/i.test(line)) return false;
-    if (/^\d{1,2}:\d{2}$/.test(line)) return false;
-    if (/^\d[\d\s]*:-?$/.test(line)) return false;
-    if (/^[×x]$/i.test(line)) return false;
-    if (/^\d{1,2}\s+(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)$/i.test(line)) return false;
-    if (/^\d[\d\s]*kr\s*\d{1,2}\s*(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)/i.test(line)) return false;
-    if (/^Skick:/i.test(line)) return false;
-    if (/^Ny medlem$/i.test(line)) return false;
+
+    // Filter location/price duplicates
     if (lineLower === locationLower) return false;
     if (lineNoSpaces === priceText || lineNoSpaces === priceText.replace("kr", "") + ":-") return false;
-    
+
     return true;
   });
 
+  // Remove markdown links, keep text
   const withoutLinks = filtered.map((line) => line.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1"));
+  
+  // Remove consecutive duplicates
   const unique = withoutLinks.filter((line, i, arr) => i === 0 || line !== arr[i - 1]);
 
   return unique.join("\n").trim();
@@ -163,7 +205,7 @@ export default function AdDetails() {
           title,
           url: window.location.href,
         });
-      } catch (e) {
+      } catch {
         // User cancelled
       }
     }
@@ -183,11 +225,35 @@ export default function AdDetails() {
     );
   }
 
+  const categoryInfo = (() => {
+    const internalCat = ad.category && CATEGORIES.some(c => c.id === ad.category)
+      ? ad.category
+      : mapToInternalCategory(ad.title);
+    return CATEGORIES.find(c => c.id === internalCat);
+  })();
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border">
+    <div className="min-h-screen bg-background pb-24 lg:pb-8">
+      {/* Header - Mobile */}
+      <header className="sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border lg:hidden">
         <div className="flex items-center justify-between px-4 h-14">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => navigate(-1)}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          
+          <Button variant="ghost" size="icon" onClick={handleShare}>
+            <Share2 className="h-5 w-5" />
+          </Button>
+        </div>
+      </header>
+
+      {/* Desktop Header */}
+      <header className="hidden lg:block border-b border-border bg-background">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <Button 
             variant="ghost" 
             size="sm" 
@@ -195,192 +261,288 @@ export default function AdDetails() {
             className="gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Tillbaka</span>
+            Tillbaka till annonser
           </Button>
           
-          <Button variant="ghost" size="icon" onClick={handleShare}>
+          <Button variant="ghost" size="sm" onClick={handleShare} className="gap-2">
             <Share2 className="h-4 w-4" />
+            Dela
           </Button>
         </div>
       </header>
 
-      {/* Content */}
-      <div className="md:max-w-4xl md:mx-auto md:grid md:grid-cols-[1.2fr_1fr] md:gap-6 md:p-6">
-        {/* Image Gallery */}
-        <div 
-          className="relative bg-secondary aspect-square md:aspect-auto md:min-h-[400px] md:rounded-lg overflow-hidden"
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-        >
-          {images.length > 0 ? (
-            <img
-              src={images[currentImageIndex]}
-              alt={title}
-              className="w-full h-full object-contain bg-secondary"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground min-h-[300px]">
-              Ingen bild
-            </div>
-          )}
+      {/* Main Content */}
+      <main className="lg:max-w-6xl lg:mx-auto lg:px-6 lg:py-8">
+        <div className="lg:grid lg:grid-cols-[1fr_380px] lg:gap-8">
+          
+          {/* Left Column - Images & Description */}
+          <div>
+            {/* Image Gallery - Mobile: Full width, Desktop: Rounded */}
+            <div 
+              className="relative bg-secondary aspect-square lg:aspect-[4/3] lg:rounded-xl overflow-hidden"
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
+              {images.length > 0 ? (
+                <img
+                  src={images[currentImageIndex]}
+                  alt={title}
+                  className="w-full h-full object-contain bg-secondary"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                  Ingen bild
+                </div>
+              )}
 
-          {images.length > 1 && (
-            <>
-              <button
-                onClick={prevImage}
-                className="hidden md:flex absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-background/90 backdrop-blur items-center justify-center hover:bg-background transition-colors shadow-md"
-                aria-label="Föregående bild"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button
-                onClick={nextImage}
-                className="hidden md:flex absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-background/90 backdrop-blur items-center justify-center hover:bg-background transition-colors shadow-md"
-                aria-label="Nästa bild"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-background/80 backdrop-blur rounded-full px-3 py-1.5">
-                {images.map((_, idx) => (
+              {images.length > 1 && (
+                <>
+                  {/* Desktop nav buttons */}
                   <button
-                    key={idx}
-                    onClick={() => setCurrentImageIndex(idx)}
-                    className={`h-2.5 w-2.5 rounded-full transition-all ${
-                      idx === currentImageIndex ? "bg-primary scale-110" : "bg-foreground/30 hover:bg-foreground/50"
-                    }`}
-                    aria-label={`Bild ${idx + 1}`}
-                  />
-                ))}
-              </div>
+                    onClick={prevImage}
+                    className="hidden lg:flex absolute left-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-background/90 backdrop-blur items-center justify-center hover:bg-background transition-colors shadow-lg"
+                    aria-label="Föregående bild"
+                  >
+                    <ChevronLeft className="h-6 w-6" />
+                  </button>
+                  <button
+                    onClick={nextImage}
+                    className="hidden lg:flex absolute right-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-background/90 backdrop-blur items-center justify-center hover:bg-background transition-colors shadow-lg"
+                    aria-label="Nästa bild"
+                  >
+                    <ChevronRight className="h-6 w-6" />
+                  </button>
 
-              <div className="absolute top-4 right-4 bg-background/80 backdrop-blur rounded-full px-3 py-1 text-sm font-medium">
-                {currentImageIndex + 1} / {images.length}
-              </div>
-            </>
-          )}
-        </div>
+                  {/* Image counter */}
+                  <div className="absolute top-4 right-4 bg-background/80 backdrop-blur rounded-full px-3 py-1.5 text-sm font-medium">
+                    {currentImageIndex + 1} / {images.length}
+                  </div>
 
-        {/* Details Panel */}
-        <div className="p-4 md:p-0">
-          <h1 className="text-xl md:text-2xl font-bold leading-tight">{title}</h1>
-
-          <p className="mt-3 text-3xl md:text-4xl font-bold text-primary">{priceText}</p>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {(() => {
-              const internalCat = ad.category && CATEGORIES.some(c => c.id === ad.category)
-                ? ad.category
-                : mapToInternalCategory(ad.title);
-              const catInfo = CATEGORIES.find(c => c.id === internalCat);
-              if (catInfo) {
-                const Icon = catInfo.icon;
-                return (
-                  <Badge variant="secondary" className="gap-1.5">
-                    <Icon className="h-3 w-3" />
-                    {catInfo.label}
-                  </Badge>
-                );
-              }
-              return null;
-            })()}
-
-            {details?.condition && (
-              <Badge variant="outline" className="gap-1">
-                <CheckCircle className="h-3 w-3" />
-                {details.condition}
-              </Badge>
-            )}
-          </div>
-
-          {location && (
-            <div className="mt-3 flex items-center gap-1.5 text-muted-foreground text-sm">
-              <MapPin className="h-4 w-4" />
-              <span>{location}</span>
-            </div>
-          )}
-
-          {/* Description */}
-          <div className="mt-6">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-foreground">Beskrivning</h2>
-              {isLoading && (
-                <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  {loadingTime >= 5 ? "Det tar lite längre..." : "Hämtar detaljer..."}
-                </span>
+                  {/* Dots indicator */}
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-background/80 backdrop-blur rounded-full px-3 py-2">
+                    {images.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setCurrentImageIndex(idx)}
+                        className={cn(
+                          "h-2 w-2 rounded-full transition-all",
+                          idx === currentImageIndex 
+                            ? "bg-primary w-4" 
+                            : "bg-foreground/30 hover:bg-foreground/50"
+                        )}
+                        aria-label={`Bild ${idx + 1}`}
+                      />
+                    ))}
+                  </div>
+                </>
               )}
             </div>
 
-            {isLoading ? (
-              <div className="space-y-2.5">
-                <div className={cn("h-4 rounded bg-muted/70 animate-pulse", loadingTime >= 3 ? "w-full" : "w-11/12")} />
-                <div className="h-4 rounded bg-muted/60 animate-pulse w-10/12" style={{ animationDelay: "75ms" }} />
-                <div className="h-4 rounded bg-muted/50 animate-pulse w-9/12" style={{ animationDelay: "150ms" }} />
-                <div className="h-4 rounded bg-muted/40 animate-pulse w-8/12" style={{ animationDelay: "225ms" }} />
-                {loadingTime >= 5 && (
-                  <p className="text-xs text-muted-foreground mt-3 animate-fade-in">
-                    Första gången tar längre – sedan cachas det i 7 dagar.
-                  </p>
+            {/* Thumbnails - Desktop only */}
+            {images.length > 1 && (
+              <div className="hidden lg:flex gap-2 mt-4 overflow-x-auto pb-2">
+                {images.map((img, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setCurrentImageIndex(idx)}
+                    className={cn(
+                      "flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all",
+                      idx === currentImageIndex 
+                        ? "border-primary ring-2 ring-primary/20" 
+                        : "border-transparent hover:border-border"
+                    )}
+                  >
+                    <img
+                      src={img}
+                      alt={`Bild ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Mobile: Title & Price */}
+            <div className="p-4 lg:hidden">
+              <h1 className="text-xl font-bold leading-tight">{title}</h1>
+              <p className="mt-2 text-2xl font-bold text-primary">{priceText}</p>
+              
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {categoryInfo && (
+                  <Badge variant="secondary" className="gap-1.5">
+                    <categoryInfo.icon className="h-3 w-3" />
+                    {categoryInfo.label}
+                  </Badge>
+                )}
+
+                {details?.condition && (
+                  <Badge variant="outline" className="gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    {details.condition}
+                  </Badge>
                 )}
               </div>
-            ) : (
-              <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap text-sm">
-                {description || "Ingen beskrivning hittades."}
-              </p>
+
+              {location && (
+                <div className="mt-3 flex items-center gap-1.5 text-muted-foreground text-sm">
+                  <MapPin className="h-4 w-4" />
+                  <span>{location}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Description Section */}
+            <div className="px-4 pb-6 lg:px-0 lg:mt-8">
+              <h2 className="font-semibold text-lg text-foreground mb-3">Beskrivning</h2>
+              
+              {isLoading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-11/12" />
+                  <Skeleton className="h-4 w-10/12" />
+                  <Skeleton className="h-4 w-9/12" />
+                  {loadingTime >= 3 && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground mt-4">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {loadingTime >= 6 
+                        ? "Första laddningen tar längre – cachas sedan i 7 dagar."
+                        : "Hämtar detaljer..."}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                  {description || "Ingen beskrivning tillgänglig."}
+                </p>
+              )}
+            </div>
+
+            {/* Seller - Desktop */}
+            {details?.seller && (details.seller.name || details.seller.username) && (
+              <div className="hidden lg:block mt-6 p-4 rounded-xl bg-secondary/50">
+                <div className="flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <User className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">{details.seller.name}</p>
+                    {details.seller.username && (
+                      <p className="text-sm text-muted-foreground">@{details.seller.username}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Seller info */}
-          {details?.seller && (details.seller.name || details.seller.username) && (
-            <div className="mt-6">
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <User className="h-5 w-5 text-primary" />
+          {/* Right Column - Desktop Sticky Panel */}
+          <div className="hidden lg:block">
+            <div className="sticky top-8 space-y-6">
+              {/* Price Card */}
+              <div className="p-6 rounded-xl border border-border bg-card">
+                <p className="text-3xl font-bold text-primary">{priceText}</p>
+                <h1 className="mt-3 text-xl font-semibold leading-tight">{title}</h1>
+                
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  {categoryInfo && (
+                    <Badge variant="secondary" className="gap-1.5">
+                      <categoryInfo.icon className="h-3 w-3" />
+                      {categoryInfo.label}
+                    </Badge>
+                  )}
+
+                  {details?.condition && (
+                    <Badge variant="outline" className="gap-1">
+                      <CheckCircle className="h-3 w-3" />
+                      {details.condition}
+                    </Badge>
+                  )}
                 </div>
-                <div>
-                  <p className="font-medium text-foreground">{details.seller.name}</p>
-                  {details.seller.username && (
-                    <p className="text-sm text-muted-foreground">@{details.seller.username}</p>
+
+                {location && (
+                  <div className="mt-4 flex items-center gap-2 text-muted-foreground">
+                    <MapPin className="h-4 w-4" />
+                    <span>{location}</span>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="mt-6 space-y-3">
+                  <Button className="w-full" size="lg" asChild>
+                    <a href={ad.ad_url} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Visa på {sourceInfo.name}
+                    </a>
+                  </Button>
+
+                  {details?.contact_info && (details.contact_info.email || details.contact_info.phone) && (
+                    <div className="flex gap-2">
+                      {details.contact_info.email && (
+                        <Button variant="outline" className="flex-1 gap-2" asChild>
+                          <a href={`mailto:${details.contact_info.email}`}>
+                            <Mail className="h-4 w-4" />
+                            E-post
+                          </a>
+                        </Button>
+                      )}
+                      {details.contact_info.phone && (
+                        <Button variant="outline" className="flex-1 gap-2" asChild>
+                          <a href={`tel:${details.contact_info.phone}`}>
+                            <Phone className="h-4 w-4" />
+                            Ring
+                          </a>
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
+
+              {/* Seller Card */}
+              {details?.seller && (details.seller.name || details.seller.username) && (
+                <div className="p-4 rounded-xl border border-border bg-card">
+                  <h3 className="text-sm font-medium text-muted-foreground mb-3">Säljare</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <User className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium">{details.seller.name}</p>
+                      {details.seller.username && (
+                        <p className="text-sm text-muted-foreground">@{details.seller.username}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+        </div>
+      </main>
 
-          {/* Contact & Actions */}
-          <div className="mt-6 pt-6 border-t border-border">
-            {details?.contact_info && (details.contact_info.email || details.contact_info.phone) && (
-              <div className="mb-4">
-                <h3 className="font-semibold text-foreground mb-3 text-sm">Kontakta säljare</h3>
-                <div className="flex flex-wrap gap-2">
-                  {details.contact_info.email && (
-                    <Button variant="outline" size="sm" className="gap-2" asChild>
-                      <a href={`mailto:${details.contact_info.email}`}>
-                        <Mail className="h-4 w-4" />
-                        E-post
-                      </a>
-                    </Button>
-                  )}
-                  {details.contact_info.phone && (
-                    <Button variant="outline" size="sm" className="gap-2" asChild>
-                      <a href={`tel:${details.contact_info.phone}`}>
-                        <Phone className="h-4 w-4" />
-                        Ring
-                      </a>
-                    </Button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            <Button className="w-full" size="lg" asChild>
-              <a href={ad.ad_url} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Visa på {sourceInfo.name}
+      {/* Mobile Sticky CTA */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur border-t border-border lg:hidden safe-area-bottom">
+        <div className="flex gap-3">
+          {details?.contact_info?.phone && (
+            <Button variant="outline" size="lg" className="gap-2" asChild>
+              <a href={`tel:${details.contact_info.phone}`}>
+                <Phone className="h-5 w-5" />
               </a>
             </Button>
-          </div>
+          )}
+          {details?.contact_info?.email && (
+            <Button variant="outline" size="lg" className="gap-2" asChild>
+              <a href={`mailto:${details.contact_info.email}`}>
+                <Mail className="h-5 w-5" />
+              </a>
+            </Button>
+          )}
+          <Button className="flex-1" size="lg" asChild>
+            <a href={ad.ad_url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Visa på {sourceInfo.name}
+            </a>
+          </Button>
         </div>
       </div>
     </div>
