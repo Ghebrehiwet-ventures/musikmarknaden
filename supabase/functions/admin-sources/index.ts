@@ -71,19 +71,17 @@ Deno.serve(async (req) => {
 
         if (listError) throw listError;
         
-        // Get actual ad count per source from ad_listings_cache
-        const { data: adCounts, error: countError } = await adminClient
-          .from('ad_listings_cache')
-          .select('source_id')
-          .eq('is_active', true);
-        
-        // Count ads per source_id
+        // Get ad count per source using individual count queries (avoids 1000 row limit)
         const countBySource: Record<string, number> = {};
-        if (adCounts) {
-          for (const ad of adCounts) {
-            if (ad.source_id) {
-              countBySource[ad.source_id] = (countBySource[ad.source_id] || 0) + 1;
-            }
+        for (const source of sources || []) {
+          const { count, error: countError } = await adminClient
+            .from('ad_listings_cache')
+            .select('*', { count: 'exact', head: true })
+            .eq('source_id', source.id)
+            .eq('is_active', true);
+          
+          if (!countError && count !== null) {
+            countBySource[source.id] = count;
           }
         }
         
