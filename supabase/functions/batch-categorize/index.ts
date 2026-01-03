@@ -11,11 +11,11 @@ interface CategorizeResponse {
   reasoning?: string;
 }
 
-async function categorizeAd(
+async function categorizeAdOnce(
   supabaseUrl: string,
   title: string,
   imageUrl?: string
-): Promise<CategorizeResponse | null> {
+): Promise<{ ok: true; data: CategorizeResponse } | { ok: false; status: number } | null> {
   try {
     const response = await fetch(`${supabaseUrl}/functions/v1/categorize-ad`, {
       method: 'POST',
@@ -30,14 +30,43 @@ async function categorizeAd(
 
     if (!response.ok) {
       console.error(`Failed to categorize "${title}": ${response.status}`);
-      return null;
+      return { ok: false, status: response.status };
     }
 
-    return await response.json();
+    const data = (await response.json()) as CategorizeResponse;
+    return { ok: true, data };
   } catch (error) {
     console.error(`Error categorizing "${title}":`, error);
     return null;
   }
+}
+
+async function categorizeAdWithRetry(
+  supabaseUrl: string,
+  title: string,
+  imageUrl?: string
+): Promise<CategorizeResponse | null> {
+  // Retry transient failures from categorize-ad / AI gateway
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await categorizeAdOnce(supabaseUrl, title, imageUrl);
+
+    if (res?.ok) return res.data;
+
+    const status = res && 'status' in res ? res.status : 0;
+
+    // Retry on transient statuses
+    const isTransient = status === 0 || status === 502 || status === 500 || status === 503 || status === 504 || status === 429;
+    if (!isTransient || attempt === maxAttempts) {
+      return null;
+    }
+
+    // Backoff
+    await delay(300 * attempt);
+  }
+
+  return null;
 }
 
 function delay(ms: number): Promise<void> {
@@ -134,7 +163,7 @@ Deno.serve(async (req) => {
       results.processed++;
       lastProcessedCreatedAt = ad.created_at;
       
-      const result = await categorizeAd(supabaseUrl, ad.title, ad.image_url);
+       const result = await categorizeAdWithRetry(supabaseUrl, ad.title, ad.image_url);
       
       if (!result) {
         results.failed++;
