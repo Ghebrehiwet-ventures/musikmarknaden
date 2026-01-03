@@ -41,13 +41,16 @@ export default function Index() {
 
   const allAds = data?.ads || [];
 
-  // Get unique sources for the filter
-  const availableSources = useMemo(() => {
-    const sources = new Set<string>();
+  // Get unique sources with counts for the filter
+  const { availableSources, sourceCounts } = useMemo(() => {
+    const counts: Record<string, number> = {};
     allAds.forEach(ad => {
-      if (ad.source_name) sources.add(ad.source_name);
+      if (ad.source_name) {
+        counts[ad.source_name] = (counts[ad.source_name] || 0) + 1;
+      }
     });
-    return Array.from(sources).sort((a, b) => a.localeCompare(b, 'sv'));
+    const sources = Object.keys(counts).sort((a, b) => a.localeCompare(b, 'sv'));
+    return { availableSources: sources, sourceCounts: counts };
   }, [allAds]);
   
   // Parse Swedish price format: "1.199 kr" -> 1199
@@ -144,7 +147,7 @@ export default function Index() {
         <div className="flex items-center justify-between mb-2 h-10">
           <span className="text-sm text-muted-foreground">{totalAds} annonser{searchQuery && ` för "${searchQuery}"`}</span>
           <div className="flex items-center gap-2">
-            <SourceFilter value={selectedSource} onChange={handleSourceChange} sources={availableSources} />
+            <SourceFilter value={selectedSource} onChange={handleSourceChange} sources={availableSources} sourceCounts={sourceCounts} totalCount={allAds.length} />
             <SortSelect value={sortOption} onChange={setSortOption} />
             <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
           </div>
