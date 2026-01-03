@@ -8,6 +8,7 @@ import { AdList } from "@/components/AdList";
 import { Pagination } from "@/components/Pagination";
 import { ViewToggle, ViewMode } from "@/components/ViewToggle";
 import { SortSelect, SortOption } from "@/components/SortSelect";
+import { SourceFilter } from "@/components/SourceFilter";
 import { fetchAdListings, Ad } from "@/lib/api";
 import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
 
@@ -20,6 +21,7 @@ export default function Index() {
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [sortOption, setSortOption] = useState<SortOption>("relevance");
+  const [selectedSource, setSelectedSource] = useState<string | null>(null);
   
   // Sync category from URL on mount and URL changes
   useEffect(() => {
@@ -38,6 +40,15 @@ export default function Index() {
   });
 
   const allAds = data?.ads || [];
+
+  // Get unique sources for the filter
+  const availableSources = useMemo(() => {
+    const sources = new Set<string>();
+    allAds.forEach(ad => {
+      if (ad.source_name) sources.add(ad.source_name);
+    });
+    return Array.from(sources).sort((a, b) => a.localeCompare(b, 'sv'));
+  }, [allAds]);
   
   // Parse Swedish price format: "1.199 kr" -> 1199
   const parsePriceFromText = (priceText: string | null): number | null => {
@@ -56,8 +67,9 @@ export default function Index() {
         (ad.price_text?.toLowerCase().includes(searchLower));
       
       const matchesCat = !selectedCategory || ad.category === selectedCategory;
+      const matchesSource = !selectedSource || ad.source_name === selectedSource;
       
-      return matchesSearchQuery && matchesCat;
+      return matchesSearchQuery && matchesCat && matchesSource;
     });
 
     return [...filtered].sort((a, b) => {
@@ -82,17 +94,12 @@ export default function Index() {
           const dateB = new Date(b.date || 0).getTime();
           return dateA - dateB;
         }
-        case "source": {
-          const sourceA = (a.source_name || '').toLowerCase();
-          const sourceB = (b.source_name || '').toLowerCase();
-          return sourceA.localeCompare(sourceB, 'sv');
-        }
         case "relevance":
         default:
           return 0;
       }
     });
-  }, [allAds, searchQuery, selectedCategory, sortOption]);
+  }, [allAds, searchQuery, selectedCategory, selectedSource, sortOption]);
 
   const totalAds = filteredAndSortedAds.length;
   const perPage = 24;
@@ -110,6 +117,11 @@ export default function Index() {
 
   const handleCategoryChange = (category: string | null) => {
     setSelectedCategory(category);
+    setCurrentPage(1);
+  };
+
+  const handleSourceChange = (source: string | null) => {
+    setSelectedSource(source);
     setCurrentPage(1);
   };
 
@@ -132,6 +144,7 @@ export default function Index() {
         <div className="flex items-center justify-between mb-2 h-10">
           <span className="text-sm text-muted-foreground">{totalAds} annonser{searchQuery && ` för "${searchQuery}"`}</span>
           <div className="flex items-center gap-2">
+            <SourceFilter value={selectedSource} onChange={handleSourceChange} sources={availableSources} />
             <SortSelect value={sortOption} onChange={setSortOption} />
             <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
           </div>
