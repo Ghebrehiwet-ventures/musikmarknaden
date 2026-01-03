@@ -78,60 +78,66 @@ interface Ad {
   image_url: string;
 }
 
-// Parse ads from Gearloop HTML/markdown
+// Parse ads from Gearloop markdown
+// Gearloop ads now use format: https://gearloop.se/123456-ad-title
 function parseGearloopAds(html: string, markdown: string, internalCategory: string): Ad[] {
   const ads: Ad[] = [];
   
-  // Try to extract ad cards from HTML
-  // Gearloop uses article cards with links to individual ads
-  const adLinkRegex = /href="(https:\/\/gearloop\.se\/annons\/[^"]+)"/gi;
-  const foundUrls = new Set<string>();
+  // Parse markdown format: #### [Title](https://gearloop.se/123456-slug)
+  // Followed by: price date
+  const adBlockRegex = /####\s*\[([^\]]+)\]\((https:\/\/gearloop\.se\/\d+[^)]+)\)\s*\n\s*([^\n]*)/g;
   
   let match;
-  while ((match = adLinkRegex.exec(html)) !== null) {
-    foundUrls.add(match[1]);
-  }
-  
-  // Also check markdown for ad URLs
-  const mdLinkRegex = /\(https:\/\/gearloop\.se\/annons\/[^)]+\)/gi;
-  while ((match = mdLinkRegex.exec(markdown)) !== null) {
-    const url = match[0].slice(1, -1); // Remove parentheses
-    foundUrls.add(url);
-  }
-  
-  console.log(`Found ${foundUrls.size} unique ad URLs in category`);
-  
-  // For each URL, create a basic ad entry
-  // We'll get full details when user clicks the ad
-  for (const adUrl of foundUrls) {
-    // Extract basic info from URL/context
-    const pathMatch = adUrl.match(/\/annons\/([^/]+)/);
-    const adPath = pathMatch ? pathMatch[1] : '';
+  while ((match = adBlockRegex.exec(markdown)) !== null) {
+    const title = match[1].trim();
+    const adUrl = match[2].trim();
+    const priceAndDate = match[3].trim();
     
-    // Try to find title near this URL in markdown
-    const urlIndex = markdown.indexOf(adUrl);
-    let title = adPath.replace(/-/g, ' ');
+    // Parse price and date from "5 000 kr 17 dec" format
+    const priceMatch = priceAndDate.match(/^([\d\s]+)\s*kr/);
+    const priceText = priceMatch ? priceMatch[1].replace(/\s/g, '') + ' kr' : null;
     
-    if (urlIndex > 0) {
-      // Look for title before URL (usually in markdown link format)
-      const beforeUrl = markdown.substring(Math.max(0, urlIndex - 200), urlIndex);
-      const titleMatch = beforeUrl.match(/\[([^\]]+)\]\s*$/);
-      if (titleMatch) {
-        title = titleMatch[1];
-      }
-    }
+    // Extract date (at the end after price)
+    const dateMatch = priceAndDate.match(/(\d+\s+\w+)$/);
+    const dateStr = dateMatch ? dateMatch[1] : '';
     
     ads.push({
       title,
       ad_url: adUrl,
       category: internalCategory,
       location: '',
-      date: new Date().toISOString().split('T')[0],
-      price_text: null,
+      date: dateStr || new Date().toISOString().split('T')[0],
+      price_text: priceText,
       image_url: '',
     });
   }
   
+  // Fallback: Also look for bare URLs with numeric prefix pattern
+  if (ads.length === 0) {
+    const urlRegex = /https:\/\/gearloop\.se\/(\d+)-([^)\s"]+)/g;
+    const seenUrls = new Set<string>();
+    
+    while ((match = urlRegex.exec(markdown)) !== null) {
+      const adUrl = match[0];
+      if (!seenUrls.has(adUrl)) {
+        seenUrls.add(adUrl);
+        const slug = match[2];
+        const title = slug.replace(/-/g, ' ');
+        
+        ads.push({
+          title,
+          ad_url: adUrl,
+          category: internalCategory,
+          location: '',
+          date: new Date().toISOString().split('T')[0],
+          price_text: null,
+          image_url: '',
+        });
+      }
+    }
+  }
+  
+  console.log(`Found ${ads.length} ads in category`);
   return ads;
 }
 
