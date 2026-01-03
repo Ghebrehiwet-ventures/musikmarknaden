@@ -17,10 +17,13 @@ export function AdCard({ ad, onHoverStart, onHoverEnd }: AdCardProps) {
     >
       <div className="aspect-square bg-muted">
         <img 
-          src={ad.image_url || "/placeholder.svg"}
+          src={ad.image_url && ad.image_url.trim() !== "" ? ad.image_url : "/placeholder.svg"}
           alt={ad.title}
           className="w-full h-full object-cover"
           loading="lazy"
+          onError={(e) => {
+            e.currentTarget.src = "/placeholder.svg";
+          }}
         />
       </div>
       
