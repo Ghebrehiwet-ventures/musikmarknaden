@@ -10,7 +10,7 @@ interface ViewToggleProps {
 
 export function ViewToggle({ viewMode, onViewModeChange }: ViewToggleProps) {
   return (
-    <div className="flex items-center gap-1 border border-border rounded-lg p-1">
+    <div className="flex items-center gap-1 border border-border rounded-lg p-1 h-10">
       <Button
         variant={viewMode === "grid" ? "default" : "ghost"}
         size="sm"
