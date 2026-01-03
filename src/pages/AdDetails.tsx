@@ -325,9 +325,9 @@ export default function AdDetails() {
                         key={idx}
                         onClick={() => setCurrentImageIndex(idx)}
                         className={cn(
-                          "h-2 w-2 rounded-full transition-all",
+                          "h-2 w-2 rounded-full transition-colors",
                           idx === currentImageIndex 
-                            ? "bg-primary w-4" 
+                            ? "bg-primary"
                             : "bg-foreground/30 hover:bg-foreground/50"
                         )}
                         aria-label={`Bild ${idx + 1}`}
