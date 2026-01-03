@@ -374,7 +374,7 @@ export default function AdDetails() {
       </nav>
 
       {/* Main Content */}
-      <main className="pt-4 lg:max-w-6xl lg:mx-auto lg:px-6 lg:pt-8 lg:pb-8">
+      <main className="lg:max-w-6xl lg:mx-auto lg:px-6 lg:py-8">
         <div className="lg:grid lg:grid-cols-[1fr_380px] lg:gap-8">
           
           {/* Left Column - Images & Description */}
