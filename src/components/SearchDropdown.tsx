@@ -83,7 +83,7 @@ export function SearchDropdown({
           value={searchQuery}
           onChange={handleInputChange}
           onFocus={() => setIsOpen(true)}
-          className={`pl-10 pr-9 text-sm bg-secondary/50 border-border rounded-full ${compact ? "h-9" : "h-10"}`}
+          className={`pl-10 pr-9 text-sm bg-secondary/50 border-transparent hover:border-border focus:border-border focus:bg-background transition-colors rounded-full ${compact ? "h-9" : "h-10"}`}
         />
         {searchQuery && (
           <button
@@ -100,7 +100,7 @@ export function SearchDropdown({
         <div className="absolute top-full left-0 right-0 mt-2 bg-popover border border-border rounded-xl shadow-lg z-50 overflow-hidden">
           {/* Recent searches */}
           {recentSearches.length > 0 && (
-            <div className="p-3">
+            <div className="p-3 border-b border-border">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Clock className="h-3 w-3" />
@@ -129,7 +129,7 @@ export function SearchDropdown({
           )}
 
           {/* Popular brands */}
-          <div className="p-3">
+          <div className="p-3 border-b border-border">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
               <TrendingUp className="h-3 w-3" />
               <span>Populära märken</span>
@@ -149,7 +149,7 @@ export function SearchDropdown({
           </div>
 
           {/* Popular product types */}
-          <div className="p-3">
+          <div className="p-3 border-b border-border">
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
               <TrendingUp className="h-3 w-3" />
               <span>Populära produkter</span>
