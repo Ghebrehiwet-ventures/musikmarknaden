@@ -40,169 +40,159 @@ async function categorizeWithAI(
   }
 }
 
-const PARSEBOT_API_BASE = 'https://api.parse.bot/scraper/0f1f1694-68f5-4a07-8498-3b2e8a026a74';
 const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v1/scrape';
 
-// All categories from Gearloop
+// All categories from Gearloop - URLs to scrape
 const GEARLOOP_CATEGORIES = [
-  'akustiska-gitarrer-alla',
-  'basar-alla',
-  'blasinstrument-alla',
-  'elgitarrer-alla',
-  'strakinstrument-alla',
-  'klaviatur-alla',
-  'synthar-alla',
-  'eurorack-alla',
-  'trummor-percussion-alla',
-  'service-reparation-alla',
-  'dj-utrustning-alla',
-  'pedaler-effekter-alla',
-  'gitarrforstarkare-alla',
-  'basf%C3%B6rstarkare-alla',
-  'ovriga-forstarkare-alla',
-  'mikrofoner-alla',
-  'pa-Live-alla',
-  'api-500-series-alla',
-  'studio-scenutrustning-alla',
-  'datorer-alla',
-  'mjukvara-plug-ins-alla',
-  'reservdelar-ovrigt-alla',
-  'studiomobler-alla',
-  'sangare-alla',
-  'basist-alla',
-  'gitarrist-alla',
-  'keyboardist-alla',
-  'klassisk-alla',
-  'trummis-alla',
-  'blasare-alla',
-  'ovriga-alla',
-  'replokaler-alla',
-  'studiolokaler-alla',
-  'lektioner-alla',
-  'kompositorer-alla',
-  'producenter-alla',
-  'mastering-alla',
-  'distribution-alla',
-  'artwork-design-alla',
-  'promotionfoto-alla',
-  'litteratur-noter-alla',
+  { slug: 'akustiska-gitarrer-alla', internal: 'instrument' },
+  { slug: 'basar-alla', internal: 'instrument' },
+  { slug: 'blasinstrument-alla', internal: 'instrument' },
+  { slug: 'elgitarrer-alla', internal: 'instrument' },
+  { slug: 'strakinstrument-alla', internal: 'instrument' },
+  { slug: 'klaviatur-alla', internal: 'instrument' },
+  { slug: 'trummor-percussion-alla', internal: 'instrument' },
+  { slug: 'synthar-alla', internal: 'synth-modular' },
+  { slug: 'eurorack-alla', internal: 'synth-modular' },
+  { slug: 'dj-utrustning-alla', internal: 'dj-live' },
+  { slug: 'pedaler-effekter-alla', internal: 'pedals-effects' },
+  { slug: 'gitarrforstarkare-alla', internal: 'amplifiers' },
+  { slug: 'basforstarkare-alla', internal: 'amplifiers' },
+  { slug: 'ovriga-forstarkare-alla', internal: 'amplifiers' },
+  { slug: 'mikrofoner-alla', internal: 'studio' },
+  { slug: 'pa-Live-alla', internal: 'dj-live' },
+  { slug: 'api-500-series-alla', internal: 'studio' },
+  { slug: 'studio-scenutrustning-alla', internal: 'studio' },
+  { slug: 'datorer-alla', internal: 'software-computers' },
+  { slug: 'mjukvara-plug-ins-alla', internal: 'software-computers' },
+  { slug: 'reservdelar-ovrigt-alla', internal: 'accessories-parts' },
+  { slug: 'studiomobler-alla', internal: 'studio' },
 ];
-
-// Map Gearloop categories to internal categories
-const GEARLOOP_CATEGORY_MAP: Record<string, string> = {
-  'akustiska-gitarrer-alla': 'instrument',
-  'basar-alla': 'instrument',
-  'blasinstrument-alla': 'instrument',
-  'elgitarrer-alla': 'instrument',
-  'strakinstrument-alla': 'instrument',
-  'klaviatur-alla': 'instrument',
-  'trummor-percussion-alla': 'instrument',
-  'synthar-alla': 'synth-modular',
-  'eurorack-alla': 'synth-modular',
-  'service-reparation-alla': 'services',
-  'dj-utrustning-alla': 'dj-live',
-  'pedaler-effekter-alla': 'pedals-effects',
-  'gitarrforstarkare-alla': 'amplifiers',
-  'basf%C3%B6rstarkare-alla': 'amplifiers',
-  'ovriga-forstarkare-alla': 'amplifiers',
-  'mikrofoner-alla': 'studio',
-  'pa-Live-alla': 'dj-live',
-  'api-500-series-alla': 'studio',
-  'studio-scenutrustning-alla': 'studio',
-  'datorer-alla': 'software-computers',
-  'mjukvara-plug-ins-alla': 'software-computers',
-  'reservdelar-ovrigt-alla': 'accessories-parts',
-  'studiomobler-alla': 'studio',
-  'sangare-alla': 'services',
-  'basist-alla': 'services',
-  'gitarrist-alla': 'services',
-  'keyboardist-alla': 'services',
-  'klassisk-alla': 'services',
-  'trummis-alla': 'services',
-  'blasare-alla': 'services',
-  'ovriga-alla': 'other',
-  'replokaler-alla': 'services',
-  'studiolokaler-alla': 'services',
-  'lektioner-alla': 'services',
-  'kompositorer-alla': 'services',
-  'producenter-alla': 'services',
-  'mastering-alla': 'services',
-  'distribution-alla': 'services',
-  'artwork-design-alla': 'services',
-  'promotionfoto-alla': 'services',
-  'litteratur-noter-alla': 'other',
-};
-
-function mapGearloopCategory(externalCategory: string): string {
-  return GEARLOOP_CATEGORY_MAP[externalCategory] || 'other';
-}
 
 interface Ad {
   title: string;
-  ad_path: string;
   ad_url: string;
   category: string;
   location: string;
   date: string;
   price_text: string | null;
-  price_amount: number | null;
   image_url: string;
 }
 
-interface AdsResponse {
-  source_url: string;
-  count: number;
-  ads: Ad[];
+// Parse ads from Gearloop HTML/markdown
+function parseGearloopAds(html: string, markdown: string, internalCategory: string): Ad[] {
+  const ads: Ad[] = [];
+  
+  // Try to extract ad cards from HTML
+  // Gearloop uses article cards with links to individual ads
+  const adLinkRegex = /href="(https:\/\/gearloop\.se\/annons\/[^"]+)"/gi;
+  const foundUrls = new Set<string>();
+  
+  let match;
+  while ((match = adLinkRegex.exec(html)) !== null) {
+    foundUrls.add(match[1]);
+  }
+  
+  // Also check markdown for ad URLs
+  const mdLinkRegex = /\(https:\/\/gearloop\.se\/annons\/[^)]+\)/gi;
+  while ((match = mdLinkRegex.exec(markdown)) !== null) {
+    const url = match[0].slice(1, -1); // Remove parentheses
+    foundUrls.add(url);
+  }
+  
+  console.log(`Found ${foundUrls.size} unique ad URLs in category`);
+  
+  // For each URL, create a basic ad entry
+  // We'll get full details when user clicks the ad
+  for (const adUrl of foundUrls) {
+    // Extract basic info from URL/context
+    const pathMatch = adUrl.match(/\/annons\/([^/]+)/);
+    const adPath = pathMatch ? pathMatch[1] : '';
+    
+    // Try to find title near this URL in markdown
+    const urlIndex = markdown.indexOf(adUrl);
+    let title = adPath.replace(/-/g, ' ');
+    
+    if (urlIndex > 0) {
+      // Look for title before URL (usually in markdown link format)
+      const beforeUrl = markdown.substring(Math.max(0, urlIndex - 200), urlIndex);
+      const titleMatch = beforeUrl.match(/\[([^\]]+)\]\s*$/);
+      if (titleMatch) {
+        title = titleMatch[1];
+      }
+    }
+    
+    ads.push({
+      title,
+      ad_url: adUrl,
+      category: internalCategory,
+      location: '',
+      date: new Date().toISOString().split('T')[0],
+      price_text: null,
+      image_url: '',
+    });
+  }
+  
+  return ads;
 }
 
-async function fetchAdsForCategory(parsebotApiKey: string, category: string): Promise<Ad[]> {
-  const categoryAds: Ad[] = [];
-  let page = 1;
-  let hasMore = true;
-
-  while (hasMore) {
-    const response = await fetch(`${PARSEBOT_API_BASE}/fetch_ad_listings`, {
+// Fetch ads from a single Gearloop category page using Firecrawl
+async function fetchCategoryWithFirecrawl(
+  firecrawlApiKey: string, 
+  category: { slug: string; internal: string }
+): Promise<Ad[]> {
+  const url = `https://gearloop.se/kategori/${category.slug}`;
+  console.log(`Fetching category: ${url}`);
+  
+  try {
+    const response = await fetch(FIRECRAWL_API_URL, {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${firecrawlApiKey}`,
         'Content-Type': 'application/json',
-        'X-API-Key': parsebotApiKey,
       },
-      body: JSON.stringify({ page, category }),
+      body: JSON.stringify({
+        url,
+        formats: ['markdown', 'html'],
+        onlyMainContent: true,
+        waitFor: 3000,
+      }),
     });
 
     if (!response.ok) {
-      console.error(`Failed to fetch ${category} page ${page}: ${response.status}`);
-      break;
+      const errorText = await response.text();
+      console.error(`Firecrawl error for ${category.slug}: ${response.status} - ${errorText}`);
+      return [];
     }
 
-    const data: AdsResponse = await response.json();
-
-    if (data.ads.length === 0) {
-      hasMore = false;
-    } else {
-      categoryAds.push(...data.ads);
-      page++;
-      
-      // Safety limit per category
-      if (page > 20) {
-        console.warn(`Reached page limit for ${category}, stopping`);
-        hasMore = false;
-      }
-      
-      // Small delay to be nice to the API
-      await new Promise(resolve => setTimeout(resolve, 150));
+    const data = await response.json();
+    const html = data.data?.html || data.html || '';
+    const markdown = data.data?.markdown || data.markdown || '';
+    
+    if (!html && !markdown) {
+      console.warn(`No content for ${category.slug}`);
+      return [];
     }
+    
+    const ads = parseGearloopAds(html, markdown, category.internal);
+    console.log(`${category.slug}: Found ${ads.length} ads`);
+    
+    return ads;
+  } catch (error) {
+    console.error(`Error fetching ${category.slug}:`, error);
+    return [];
   }
-
-  return categoryAds;
 }
 
-async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any, supabaseUrl: string): Promise<{ allAds: Ad[], newlyInsertedUrls: Set<string> }> {
+async function fetchAllAdsFromGearloop(
+  firecrawlApiKey: string, 
+  supabase: any, 
+  supabaseUrl: string
+): Promise<{ allAds: Ad[], newlyInsertedUrls: Set<string> }> {
   const allAds: Ad[] = [];
   const seenUrls = new Set<string>();
   const newlyInsertedUrls = new Set<string>();
 
-  console.log(`Starting to fetch ads from ${GEARLOOP_CATEGORIES.length} categories...`);
+  console.log(`Starting to fetch ads from ${GEARLOOP_CATEGORIES.length} categories using Firecrawl...`);
 
   // Get existing ad URLs to detect truly new ads
   const { data: existingAds } = await supabase
@@ -211,12 +201,10 @@ async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any, su
   const existingUrlSet = new Set<string>(existingAds?.map((a: any) => a.ad_url) || []);
 
   for (const category of GEARLOOP_CATEGORIES) {
-    console.log(`Fetching category: ${category}`);
-    
     try {
-      const categoryAds = await fetchAdsForCategory(parsebotApiKey, category);
+      const categoryAds = await fetchCategoryWithFirecrawl(firecrawlApiKey, category);
       
-      // Deduplicate in case ads appear in multiple categories
+      // Deduplicate
       const newAdsInCategory: Ad[] = [];
       for (const ad of categoryAds) {
         if (!seenUrls.has(ad.ad_url)) {
@@ -224,28 +212,27 @@ async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any, su
           allAds.push(ad);
           newAdsInCategory.push(ad);
           
-          // Track truly new ads (not in DB yet)
           if (!existingUrlSet.has(ad.ad_url)) {
             newlyInsertedUrls.add(ad.ad_url);
           }
         }
       }
       
-      console.log(`${category}: ${categoryAds.length} ads (${newAdsInCategory.length} unique, total: ${allAds.length})`);
+      console.log(`${category.slug}: ${categoryAds.length} ads (${newAdsInCategory.length} unique, total: ${allAds.length})`);
       
-      // BATCH SAVE after each category to prevent timeout data loss
+      // Batch save after each category
       if (newAdsInCategory.length > 0) {
-        const internalCategory = mapGearloopCategory(category);
         const adsToSave = newAdsInCategory.map(ad => ({
           ad_url: ad.ad_url,
-          ad_path: ad.ad_path,
+          ad_path: ad.ad_url.split('/').pop() || '',
           title: ad.title,
-          category: internalCategory,
-          source_category: category, // Store original category for mapping
+          category: ad.category,
+          source_category: category.slug,
+          source_name: 'gearloop',
           location: ad.location,
           date: ad.date,
           price_text: ad.price_text,
-          price_amount: ad.price_amount,
+          price_amount: null,
           image_url: ad.image_url,
           is_active: true,
           last_seen_at: new Date().toISOString(),
@@ -256,16 +243,16 @@ async function fetchAllAdsFromParsebot(parsebotApiKey: string, supabase: any, su
           .upsert(adsToSave, { onConflict: 'ad_url' });
         
         if (upsertError) {
-          console.error(`Failed to save ${category}:`, upsertError);
+          console.error(`Failed to save ${category.slug}:`, upsertError);
         } else {
-          console.log(`Saved ${newAdsInCategory.length} ads from ${category}`);
+          console.log(`Saved ${newAdsInCategory.length} ads from ${category.slug}`);
         }
       }
       
-      // Small delay between categories
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Rate limiting - Firecrawl has limits
+      await delay(1000);
     } catch (error) {
-      console.error(`Error fetching ${category}:`, error);
+      console.error(`Error processing ${category.slug}:`, error);
     }
   }
 
@@ -282,7 +269,6 @@ async function aiCategorizeNewOtherAds(supabase: any, supabaseUrl: string, newAd
 
   console.log(`Starting AI categorization for ${newAdUrls.size} new ads...`);
   
-  // Hämta nya annonser som hamnade i "other"
   const { data: otherAds, error } = await supabase
     .from('ad_listings_cache')
     .select('id, title, image_url, category, ad_url')
@@ -296,7 +282,7 @@ async function aiCategorizeNewOtherAds(supabase: any, supabaseUrl: string, newAd
   }
   
   if (!otherAds || otherAds.length === 0) {
-    console.log('No new "other" ads to categorize (all already categorized)');
+    console.log('No new "other" ads to categorize');
     return { categorized: 0, failed: 0 };
   }
   
@@ -325,7 +311,6 @@ async function aiCategorizeNewOtherAds(supabase: any, supabaseUrl: string, newAd
       failed++;
     }
     
-    // Rate limiting: 300ms mellan AI-anrop
     await delay(300);
   }
   
@@ -339,7 +324,6 @@ async function runCleanupCategorization(
   supabaseUrl: string,
   limit: number
 ): Promise<{ categorized: number; failed: number }> {
-  // Fetch existing "other" ads (oldest first, so we process them in order)
   const { data: otherAds, error } = await supabase
     .from('ad_listings_cache')
     .select('id, title, image_url, category')
@@ -383,84 +367,18 @@ async function runCleanupCategorization(
       failed++;
     }
 
-    // Rate limiting: 300ms between AI calls
     await delay(300);
   }
 
   return { categorized, failed };
 }
 
-
-async function fetchAdDetails(adUrl: string, firecrawlApiKey: string): Promise<any> {
-  console.log(`Fetching details for: ${adUrl}`);
-  
-  const response = await fetch(FIRECRAWL_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${firecrawlApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      url: adUrl,
-      formats: ['markdown', 'extract'],
-      extract: {
-        schema: {
-          type: 'object',
-          properties: {
-            title: { type: 'string' },
-            description: { type: 'string' },
-            price_text: { type: 'string' },
-            price_amount: { type: 'number' },
-            location: { type: 'string' },
-            images: { type: 'array', items: { type: 'string' } },
-            contact_email: { type: 'string' },
-            contact_phone: { type: 'string' },
-            seller_name: { type: 'string' },
-            seller_username: { type: 'string' },
-            condition: { type: 'string' },
-          },
-          required: ['title'],
-        },
-      },
-      onlyMainContent: true,
-      waitFor: 2000,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Firecrawl error for ${adUrl}: ${errorText}`);
-    return null;
-  }
-
-  const data = await response.json();
-  const extractData = data.data?.extract || data.extract || {};
-  
-  return {
-    title: extractData.title || null,
-    description: extractData.description || null,
-    price_text: extractData.price_text || null,
-    price_amount: extractData.price_amount || null,
-    location: extractData.location || null,
-    images: extractData.images || [],
-    contact_info: {
-      email: extractData.contact_email || null,
-      phone: extractData.contact_phone || null,
-    },
-    seller: {
-      name: extractData.seller_name || null,
-      username: extractData.seller_username || null,
-    },
-    condition: extractData.condition || null,
-  };
-}
-
-async function syncAds(supabase: any, parsebotApiKey: string, firecrawlApiKey: string) {
+async function syncAds(supabase: any, firecrawlApiKey: string) {
   const startTime = Date.now();
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
   
-  // Step 1: Fetch all ads from parse.bot (saves batch-wise during fetch)
-  const { allAds, newlyInsertedUrls } = await fetchAllAdsFromParsebot(parsebotApiKey, supabase, supabaseUrl);
+  // Step 1: Fetch all ads from Gearloop using Firecrawl
+  const { allAds, newlyInsertedUrls } = await fetchAllAdsFromGearloop(firecrawlApiKey, supabase, supabaseUrl);
   
   if (allAds.length === 0) {
     console.log('No ads fetched, aborting sync');
@@ -495,95 +413,24 @@ async function syncAds(supabase: any, parsebotApiKey: string, firecrawlApiKey: s
     }
   }
 
-  // Step 4: Ads are already upserted batch-wise during fetch - skip redundant upsert
   console.log(`All ${allAds.length} ads saved, ${newlyInsertedUrls.size} are new`);
 
-  // Step 5: AI categorize NEW ads that ended up in "other" (automatic categorization)
-  let aiCategorized = 0;
-  if (supabaseUrl && newlyInsertedUrls.size > 0) {
-    console.log(`Running automatic AI categorization on ${newlyInsertedUrls.size} new ads...`);
-    const aiResult = await aiCategorizeNewOtherAds(supabase, supabaseUrl, newlyInsertedUrls);
-    aiCategorized = aiResult.categorized;
-    console.log(`AI auto-categorized ${aiCategorized} new ads`);
-  }
+  // Step 4: AI categorize new "other" ads
+  const aiNewResult = await aiCategorizeNewOtherAds(supabase, supabaseUrl, newlyInsertedUrls);
 
-  // Step 5b: Cleanup categorization - process up to 50 existing "other" ads per sync
-  let cleanupCategorized = 0;
-  if (supabaseUrl) {
-    console.log('Running cleanup categorization on existing "other" ads...');
-    const cleanupResult = await runCleanupCategorization(supabase, supabaseUrl, 50);
-    cleanupCategorized = cleanupResult.categorized;
-    console.log(`Cleanup categorized ${cleanupCategorized} existing "other" ads`);
-  }
+  // Step 5: Run cleanup categorization (process 20 existing "other" ads per sync)
+  const cleanupResult = await runCleanupCategorization(supabase, supabaseUrl, 20);
 
-  // Step 6: Find ads without details in cache
-  const { data: cachedDetails, error: cacheError } = await supabase
-    .from('ad_details_cache')
-    .select('ad_url');
-
-  if (cacheError) {
-    console.error('Failed to fetch cached details:', cacheError);
-  }
-
-  const cachedDetailUrls = new Set(cachedDetails?.map((d: any) => d.ad_url) || []);
-  const adsNeedingDetails = allAds.filter(ad => !cachedDetailUrls.has(ad.ad_url));
-
-  console.log(`${adsNeedingDetails.length} ads need details fetched`);
-
-  // Step 7: Fetch details for new ads (with rate limiting)
-  let detailsFetched = 0;
-  const maxDetailsPerSync = 50; // Limit to prevent timeout
-
-  for (const ad of adsNeedingDetails.slice(0, maxDetailsPerSync)) {
-    try {
-      const details = await fetchAdDetails(ad.ad_url, firecrawlApiKey);
-      
-      if (details) {
-        const { error: insertError } = await supabase
-          .from('ad_details_cache')
-          .upsert({
-            ad_url: ad.ad_url,
-            title: details.title,
-            description: details.description,
-            price_text: details.price_text,
-            price_amount: details.price_amount,
-            location: details.location,
-            images: details.images,
-            contact_info: details.contact_info,
-            seller: details.seller,
-            condition: details.condition,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'ad_url' });
-
-        if (insertError) {
-          console.error(`Failed to cache details for ${ad.ad_url}:`, insertError);
-        } else {
-          detailsFetched++;
-        }
-      }
-
-      // Rate limit: 1 request per second
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } catch (error) {
-      console.error(`Error fetching details for ${ad.ad_url}:`, error);
-    }
-  }
-
-  const duration = (Date.now() - startTime) / 1000;
+  const duration = Math.round((Date.now() - startTime) / 1000);
   
-  const result = {
+  return {
     success: true,
     totalAds: allAds.length,
     newAds: newlyInsertedUrls.size,
-    aiCategorized,
-    cleanupCategorized,
-    detailsFetched,
     removedAds: removedUrls.length,
-    durationSeconds: duration,
+    aiCategorized: aiNewResult.categorized + cleanupResult.categorized,
+    duration: `${duration}s`,
   };
-
-  console.log('Sync complete:', result);
-  return result;
 }
 
 Deno.serve(async (req) => {
@@ -592,48 +439,39 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const parsebotApiKey = Deno.env.get('PARSEBOT_API_KEY');
     const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing Supabase credentials');
-      return new Response(
-        JSON.stringify({ success: false, error: 'Missing Supabase credentials' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!parsebotApiKey) {
-      console.error('Missing PARSEBOT_API_KEY');
-      return new Response(
-        JSON.stringify({ success: false, error: 'Missing PARSEBOT_API_KEY' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!firecrawlApiKey) {
-      console.error('Missing FIRECRAWL_API_KEY');
+      console.error('FIRECRAWL_API_KEY not configured');
       return new Response(
-        JSON.stringify({ success: false, error: 'Missing FIRECRAWL_API_KEY' }),
+        JSON.stringify({ success: false, error: 'Firecrawl API key not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('Missing Supabase configuration');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Missing Supabase configuration' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    console.log('Starting ad sync...');
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    console.log('Starting ad sync with Firecrawl...');
+    const result = await syncAds(supabase, firecrawlApiKey);
+
+    console.log('Sync complete:', result);
     
-    // Run sync directly (edge functions have 150s timeout)
-    const result = await syncAds(supabase, parsebotApiKey, firecrawlApiKey);
-
     return new Response(
       JSON.stringify(result),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error('Error in sync-ads:', error);
+    console.error('Sync error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
       JSON.stringify({ success: false, error: errorMessage }),
