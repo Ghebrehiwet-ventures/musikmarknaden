@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { CategoryBar } from "@/components/CategoryBar";
 import { AdGrid } from "@/components/AdGrid";
@@ -11,11 +12,19 @@ import { fetchAdListings, Ad } from "@/lib/api";
 import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
 
 export default function Index() {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const categoryFromUrl = searchParams.get("category");
+  
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryFromUrl);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [sortOption, setSortOption] = useState<SortOption>("relevance");
+  
+  // Sync category from URL on mount and URL changes
+  useEffect(() => {
+    setSelectedCategory(categoryFromUrl);
+  }, [categoryFromUrl]);
   
   const { startHoverPrefetch, cancelHoverPrefetch } = usePrefetchAdDetails();
 
