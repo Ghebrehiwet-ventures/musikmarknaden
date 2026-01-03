@@ -11,13 +11,13 @@ import { CATEGORIES, mapToInternalCategory } from "@/lib/categories";
 import { cn } from "@/lib/utils";
 
 function getSourceInfo(url: string): { name: string; domain: string } {
-  if (url.includes('musikborsen.se')) return { name: 'Musikbörsen', domain: 'musikborsen.se' };
-  if (url.includes('gearloop.se')) return { name: 'Gearloop', domain: 'gearloop.se' };
-  if (url.includes('dlxmusic.se')) return { name: 'DLX Music', domain: 'dlxmusic.se' };
-  if (url.includes('blocketgitarr.se')) return { name: 'Blocket Gitarr', domain: 'blocketgitarr.se' };
+  if (url.includes('musikborsen.se')) return { name: 'Musikbörsen.se', domain: 'musikborsen.se' };
+  if (url.includes('gearloop.se')) return { name: 'Gearloop.se', domain: 'gearloop.se' };
+  if (url.includes('dlxmusic.se')) return { name: 'DLXmusic.se', domain: 'dlxmusic.se' };
+  if (url.includes('blocketgitarr.se')) return { name: 'BlocketGitarr.se', domain: 'blocketgitarr.se' };
   try {
     const domain = new URL(url).hostname.replace('www.', '');
-    const name = domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+    const name = domain.charAt(0).toUpperCase() + domain.slice(1);
     return { name, domain };
   } catch {
     return { name: 'Källa', domain: '' };
