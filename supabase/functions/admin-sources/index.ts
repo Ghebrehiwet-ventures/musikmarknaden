@@ -70,7 +70,30 @@ Deno.serve(async (req) => {
           .order('created_at', { ascending: false });
 
         if (listError) throw listError;
-        result = { sources };
+        
+        // Get actual ad count per source from ad_listings_cache
+        const { data: adCounts, error: countError } = await adminClient
+          .from('ad_listings_cache')
+          .select('source_id')
+          .eq('is_active', true);
+        
+        // Count ads per source_id
+        const countBySource: Record<string, number> = {};
+        if (adCounts) {
+          for (const ad of adCounts) {
+            if (ad.source_id) {
+              countBySource[ad.source_id] = (countBySource[ad.source_id] || 0) + 1;
+            }
+          }
+        }
+        
+        // Merge actual counts into sources
+        const sourcesWithCounts = sources?.map(source => ({
+          ...source,
+          ad_count: countBySource[source.id] || 0
+        })) || [];
+        
+        result = { sources: sourcesWithCounts };
         break;
 
       case 'create':
