@@ -333,6 +333,64 @@ async function aiCategorizeNewOtherAds(supabase: any, supabaseUrl: string, newAd
   return { categorized, failed };
 }
 
+// Cleanup categorization - process existing "other" ads gradually
+async function runCleanupCategorization(
+  supabase: any,
+  supabaseUrl: string,
+  limit: number
+): Promise<{ categorized: number; failed: number }> {
+  // Fetch existing "other" ads (oldest first, so we process them in order)
+  const { data: otherAds, error } = await supabase
+    .from('ad_listings_cache')
+    .select('id, title, image_url, category')
+    .eq('category', 'other')
+    .eq('is_active', true)
+    .order('created_at', { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    console.error('Failed to fetch existing "other" ads for cleanup:', error);
+    return { categorized: 0, failed: 0 };
+  }
+
+  if (!otherAds || otherAds.length === 0) {
+    console.log('No existing "other" ads to cleanup');
+    return { categorized: 0, failed: 0 };
+  }
+
+  console.log(`Cleanup: Processing ${otherAds.length} existing "other" ads...`);
+
+  let categorized = 0;
+  let failed = 0;
+
+  for (const ad of otherAds) {
+    const aiCategory = await categorizeWithAI(supabaseUrl, ad.title, ad.image_url);
+
+    if (aiCategory && aiCategory !== 'other') {
+      const { error: updateError } = await supabase
+        .from('ad_listings_cache')
+        .update({ category: aiCategory })
+        .eq('id', ad.id);
+
+      if (updateError) {
+        console.error(`Cleanup: Failed to update "${ad.title}":`, updateError);
+        failed++;
+      } else {
+        console.log(`Cleanup: "${ad.title.substring(0, 30)}..." -> ${aiCategory}`);
+        categorized++;
+      }
+    } else {
+      failed++;
+    }
+
+    // Rate limiting: 300ms between AI calls
+    await delay(300);
+  }
+
+  return { categorized, failed };
+}
+
+
 async function fetchAdDetails(adUrl: string, firecrawlApiKey: string): Promise<any> {
   console.log(`Fetching details for: ${adUrl}`);
   
@@ -449,6 +507,15 @@ async function syncAds(supabase: any, parsebotApiKey: string, firecrawlApiKey: s
     console.log(`AI auto-categorized ${aiCategorized} new ads`);
   }
 
+  // Step 5b: Cleanup categorization - process up to 50 existing "other" ads per sync
+  let cleanupCategorized = 0;
+  if (supabaseUrl) {
+    console.log('Running cleanup categorization on existing "other" ads...');
+    const cleanupResult = await runCleanupCategorization(supabase, supabaseUrl, 50);
+    cleanupCategorized = cleanupResult.categorized;
+    console.log(`Cleanup categorized ${cleanupCategorized} existing "other" ads`);
+  }
+
   // Step 6: Find ads without details in cache
   const { data: cachedDetails, error: cacheError } = await supabase
     .from('ad_details_cache')
@@ -509,6 +576,7 @@ async function syncAds(supabase: any, parsebotApiKey: string, firecrawlApiKey: s
     totalAds: allAds.length,
     newAds: newlyInsertedUrls.size,
     aiCategorized,
+    cleanupCategorized,
     detailsFetched,
     removedAds: removedUrls.length,
     durationSeconds: duration,
