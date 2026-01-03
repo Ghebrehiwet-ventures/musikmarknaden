@@ -11,6 +11,7 @@ export interface ScrapingSource {
   last_sync_at: string | null;
   last_sync_status: string | null;
   last_sync_count: number;
+  ad_count: number; // Actual count from database
   created_at: string;
   updated_at: string;
 }
