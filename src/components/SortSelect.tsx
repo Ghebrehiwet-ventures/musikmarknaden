@@ -6,7 +6,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-export type SortOption = "relevance" | "newest" | "oldest" | "price-asc" | "price-desc";
+export type SortOption = "relevance" | "newest" | "oldest" | "price-asc" | "price-desc" | "source";
 
 interface SortSelectProps {
   value: SortOption;
@@ -25,6 +25,7 @@ export function SortSelect({ value, onChange }: SortSelectProps) {
         <SelectItem value="oldest">Äldsta först</SelectItem>
         <SelectItem value="price-asc">Pris lågt–högt</SelectItem>
         <SelectItem value="price-desc">Pris högt–lågt</SelectItem>
+        <SelectItem value="source">Källa A–Ö</SelectItem>
       </SelectContent>
     </Select>
   );

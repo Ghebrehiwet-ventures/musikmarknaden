@@ -10,6 +10,7 @@ export interface Ad {
   price_text: string | null;
   price_amount: number | null;
   image_url: string;
+  source_name: string | null;
 }
 
 export interface AdDetails {
@@ -70,6 +71,7 @@ export async function fetchAdListings(): Promise<AdsResponse> {
     price_text: row.price_text,
     price_amount: row.price_amount,
     image_url: row.image_url || '',
+    source_name: row.source_name,
   }));
 
   return {
