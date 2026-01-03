@@ -29,6 +29,8 @@ export interface AdDetails {
     username?: string;
   };
   condition?: string;
+  isDeadLink?: boolean;
+  error?: string;
 }
 
 export interface AdsResponse {
@@ -86,6 +88,21 @@ export async function getAdDetails(ad_url: string): Promise<AdDetails> {
   const { data, error } = await supabase.functions.invoke('firecrawl-ad-details', {
     body: { ad_url },
   });
+
+  // Handle dead link responses
+  if (data?.isDeadLink) {
+    return {
+      title: '',
+      description: '',
+      price_text: null,
+      price_amount: null,
+      location: '',
+      images: [],
+      contact_info: {},
+      isDeadLink: true,
+      error: data.message || 'Annonsen finns inte längre',
+    };
+  }
 
   if (error) {
     throw new Error(error.message || 'Failed to get ad details');
