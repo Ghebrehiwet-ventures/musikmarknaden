@@ -5,12 +5,11 @@ import { Loader2 } from "lucide-react";
 interface AdGridProps {
   ads: Ad[];
   isLoading: boolean;
-  onAdClick: (ad: Ad) => void;
   onAdHoverStart?: (ad: Ad) => void;
   onAdHoverEnd?: () => void;
 }
 
-export function AdGrid({ ads, isLoading, onAdClick, onAdHoverStart, onAdHoverEnd }: AdGridProps) {
+export function AdGrid({ ads, isLoading, onAdHoverStart, onAdHoverEnd }: AdGridProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -29,12 +28,10 @@ export function AdGrid({ ads, isLoading, onAdClick, onAdHoverStart, onAdHoverEnd
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-      {ads.map((ad, index) => (
+      {ads.map((ad) => (
         <AdCard 
           key={ad.ad_path} 
           ad={ad} 
-          onClick={() => onAdClick(ad)}
-          index={index}
           onHoverStart={() => onAdHoverStart?.(ad)}
           onHoverEnd={onAdHoverEnd}
         />

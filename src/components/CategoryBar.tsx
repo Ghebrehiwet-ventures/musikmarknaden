@@ -1,7 +1,8 @@
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useEffect, useCallback, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { CATEGORIES, ALL_CATEGORY_ICON } from "@/lib/categories";
-import { Button } from "@/components/ui/button";
+import { fetchAdListings } from "@/lib/api";
 
 interface CategoryBarProps {
   selectedCategory: string | null;
@@ -20,6 +21,26 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
   const [thumbWidth, setThumbWidth] = useState(0);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+
+  // Fetch ads to count per category
+  const { data } = useQuery({
+    queryKey: ['ads'],
+    queryFn: () => fetchAdListings(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Count ads per category and filter out empty ones
+  const categoryCounts = useMemo(() => {
+    return (data?.ads || []).reduce((acc, ad) => {
+      const cat = ad.category || 'other';
+      acc[cat] = (acc[cat] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [data?.ads]);
+
+  const visibleCategories = useMemo(() => {
+    return CATEGORIES.filter(cat => (categoryCounts[cat.id] || 0) > 0);
+  }, [categoryCounts]);
 
   const checkScroll = useCallback(() => {
     if (!scrollRef.current) return;
@@ -99,7 +120,7 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
     checkScroll();
     window.addEventListener("resize", checkScroll);
     return () => window.removeEventListener("resize", checkScroll);
-  }, [checkScroll]);
+  }, [checkScroll, visibleCategories]);
 
   const AllIcon = ALL_CATEGORY_ICON;
 
@@ -152,7 +173,7 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
             </span>
           </button>
 
-          {CATEGORIES.map((category) => {
+          {visibleCategories.map((category) => {
             const isSelected = selectedCategory === category.id;
             const Icon = category.icon;
             

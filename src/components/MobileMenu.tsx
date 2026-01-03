@@ -50,15 +50,15 @@ export function MobileMenu({ onCategorySelect }: MobileMenuProps) {
           <span className="sr-only">Öppna meny</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-[300px] sm:w-[350px] p-0">
-        <SheetHeader className="p-4 border-b border-border">
+      <SheetContent side="left" className="w-[300px] sm:w-[350px] p-0 flex flex-col h-full">
+        <SheetHeader className="p-4 border-b border-border flex-shrink-0">
           <SheetTitle className="flex items-center gap-2 text-base">
             <Guitar className="h-4 w-4" />
             Musikmarknaden
           </SheetTitle>
         </SheetHeader>
 
-        <div className="overflow-y-auto h-[calc(100vh-60px)]">
+        <div className="overflow-y-auto flex-1 pb-safe">
           {/* Navigation links */}
           <div className="p-4 space-y-2">
             <Link
@@ -93,7 +93,7 @@ export function MobileMenu({ onCategorySelect }: MobileMenuProps) {
                 </Badge>
               </button>
 
-              {CATEGORIES.map((category) => {
+              {CATEGORIES.filter(category => (categoryCounts[category.id] || 0) > 0).map((category) => {
                 const Icon = category.icon;
                 const count = categoryCounts[category.id] || 0;
                 

@@ -4,7 +4,6 @@ import { Header } from "@/components/Header";
 import { CategoryBar } from "@/components/CategoryBar";
 import { AdGrid } from "@/components/AdGrid";
 import { AdList } from "@/components/AdList";
-import { AdDetailModal } from "@/components/AdDetailModal";
 import { Pagination } from "@/components/Pagination";
 import { ViewToggle, ViewMode } from "@/components/ViewToggle";
 import { SortSelect, SortOption } from "@/components/SortSelect";
@@ -14,8 +13,6 @@ import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
 export default function Index() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedAd, setSelectedAd] = useState<Ad | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [sortOption, setSortOption] = useState<SortOption>("relevance");
@@ -36,7 +33,6 @@ export default function Index() {
   // Parse Swedish price format: "1.199 kr" -> 1199
   const parsePriceFromText = (priceText: string | null): number | null => {
     if (!priceText) return null;
-    // Remove "kr", spaces, and thousand separators (periods in Swedish format)
     const cleaned = priceText.replace(/\s*kr\s*/gi, '').replace(/\./g, '').replace(/\s/g, '').trim();
     const num = parseInt(cleaned, 10);
     return isNaN(num) ? null : num;
@@ -55,7 +51,6 @@ export default function Index() {
       return matchesSearchQuery && matchesCat;
     });
 
-    // Sort the filtered results
     return [...filtered].sort((a, b) => {
       switch (sortOption) {
         case "price-asc": {
@@ -69,20 +64,18 @@ export default function Index() {
           return priceB - priceA;
         }
         case "newest": {
-          // Sort by date descending (newest first)
           const dateA = new Date(a.date || 0).getTime();
           const dateB = new Date(b.date || 0).getTime();
           return dateB - dateA;
         }
         case "oldest": {
-          // Sort by date ascending (oldest first)
           const dateA = new Date(a.date || 0).getTime();
           const dateB = new Date(b.date || 0).getTime();
           return dateA - dateB;
         }
         case "relevance":
         default:
-          return 0; // Keep original order from API
+          return 0;
       }
     });
   }, [allAds, searchQuery, selectedCategory, sortOption]);
@@ -95,11 +88,6 @@ export default function Index() {
     const start = (currentPage - 1) * perPage;
     return filteredAndSortedAds.slice(start, start + perPage);
   }, [filteredAndSortedAds, currentPage, perPage]);
-
-  const handleAdClick = (ad: Ad) => {
-    setSelectedAd(ad);
-    setIsModalOpen(true);
-  };
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -127,8 +115,8 @@ export default function Index() {
       />
       
       <main className="max-w-[1000px] mx-auto px-4 py-3 text-left">
-        <div className="flex items-center justify-between mb-2 text-sm text-muted-foreground">
-          <span className="text-left">{totalAds} annonser{searchQuery && ` för "${searchQuery}"`}</span>
+        <div className="flex items-center justify-between mb-2 h-10">
+          <span className="text-sm text-muted-foreground">{totalAds} annonser{searchQuery && ` för "${searchQuery}"`}</span>
           <div className="flex items-center gap-2">
             <SortSelect value={sortOption} onChange={setSortOption} />
             <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
@@ -139,7 +127,6 @@ export default function Index() {
           <AdGrid 
             ads={paginatedAds} 
             isLoading={isLoading}
-            onAdClick={handleAdClick}
             onAdHoverStart={startHoverPrefetch}
             onAdHoverEnd={cancelHoverPrefetch}
           />
@@ -147,7 +134,6 @@ export default function Index() {
           <AdList 
             ads={paginatedAds} 
             isLoading={isLoading}
-            onAdClick={handleAdClick}
             onAdHoverStart={startHoverPrefetch}
             onAdHoverEnd={cancelHoverPrefetch}
           />
@@ -177,12 +163,6 @@ export default function Index() {
           </div>
         )}
       </main>
-
-      <AdDetailModal
-        ad={selectedAd}
-        open={isModalOpen}
-        onOpenChange={setIsModalOpen}
-      />
     </div>
   );
 }

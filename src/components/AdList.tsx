@@ -1,16 +1,15 @@
+import { Link } from "react-router-dom";
 import { Ad } from "@/lib/api";
-import { MapPin } from "lucide-react";
-import { Loader2 } from "lucide-react";
+import { MapPin, Loader2 } from "lucide-react";
 
 interface AdListProps {
   ads: Ad[];
   isLoading: boolean;
-  onAdClick: (ad: Ad) => void;
   onAdHoverStart?: (ad: Ad) => void;
   onAdHoverEnd?: () => void;
 }
 
-export function AdList({ ads, isLoading, onAdClick, onAdHoverStart, onAdHoverEnd }: AdListProps) {
+export function AdList({ ads, isLoading, onAdHoverStart, onAdHoverEnd }: AdListProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -30,12 +29,12 @@ export function AdList({ ads, isLoading, onAdClick, onAdHoverStart, onAdHoverEnd
   return (
     <div className="flex flex-col divide-y divide-border border border-border rounded-md bg-card">
       {ads.map((ad) => (
-        <article
+        <Link
           key={ad.ad_path}
-          onClick={() => onAdClick(ad)}
+          to={`/ad/${encodeURIComponent(ad.ad_url)}`}
           onMouseEnter={() => onAdHoverStart?.(ad)}
           onMouseLeave={onAdHoverEnd}
-          className="flex gap-3 p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+          className="flex gap-3 p-3 hover:bg-muted/50 transition-colors"
         >
           <div className="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0 overflow-hidden rounded bg-muted">
             <img
@@ -74,7 +73,7 @@ export function AdList({ ads, isLoading, onAdClick, onAdHoverStart, onAdHoverEnd
               {ad.price_text && ad.price_amount !== null ? ad.price_text : "Pris ej angivet"}
             </p>
           </div>
-        </article>
+        </Link>
       ))}
     </div>
   );
