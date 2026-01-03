@@ -437,19 +437,37 @@ function extractMusikborsenLocation(markdown: string): string {
   return extractLocation(markdown);
 }
 
+// Helper to get base image URL without WordPress size suffix
+function getBaseImageUrl(url: string): string {
+  // Remove WordPress size suffixes like -300x200, -768x1024, etc.
+  return url.replace(/-\d+x\d+(?=\.(jpg|jpeg|png|gif|webp))/i, '');
+}
+
 function extractImages(html: string, sourceType: string): string[] {
   const images: string[] = [];
   
   if (sourceType === 'musikborsen') {
-    // Musikbörsen uses WordPress uploads
+    // For Musikbörsen, look for WordPress uploads but deduplicate by base URL
     const mbRegex = /https?:\/\/musikborsen\.se\/wp-content\/uploads\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
+    const seenBaseUrls = new Set<string>();
     let match;
+    
     while ((match = mbRegex.exec(html)) !== null) {
       const url = match[0];
-      // Skip tiny thumbnails
-      if (!url.includes('-150x') && !url.includes('-100x') && !images.includes(url)) {
-        images.push(url);
-      }
+      const baseUrl = getBaseImageUrl(url);
+      
+      // Skip if we already have a version of this image
+      if (seenBaseUrls.has(baseUrl)) continue;
+      
+      // Skip small thumbnails, icons, and logos
+      if (url.includes('-150x') || url.includes('-100x') || 
+          url.includes('-50x') || url.includes('logo') || 
+          url.includes('icon') || url.includes('avatar')) continue;
+      
+      seenBaseUrls.add(baseUrl);
+      
+      // Use the original (base) URL for best quality
+      images.push(baseUrl);
     }
   } else if (sourceType === 'gearloop') {
     // Extract the article section only to avoid "related ads" images
