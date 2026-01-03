@@ -10,22 +10,26 @@ interface SourceFilterProps {
   value: string | null;
   onChange: (value: string | null) => void;
   sources: string[];
+  sourceCounts?: Record<string, number>;
+  totalCount?: number;
 }
 
-export function SourceFilter({ value, onChange, sources }: SourceFilterProps) {
+export function SourceFilter({ value, onChange, sources, sourceCounts, totalCount }: SourceFilterProps) {
   return (
     <Select 
       value={value || "all"} 
       onValueChange={(v) => onChange(v === "all" ? null : v)}
     >
-      <SelectTrigger className="w-[160px] h-10 text-sm">
+      <SelectTrigger className="w-[180px] h-10 text-sm">
         <SelectValue placeholder="Alla källor" />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="all">Alla källor</SelectItem>
+        <SelectItem value="all">
+          Alla källor{totalCount !== undefined && ` (${totalCount})`}
+        </SelectItem>
         {sources.map((source) => (
           <SelectItem key={source} value={source}>
-            {source}
+            {source}{sourceCounts?.[source] !== undefined && ` (${sourceCounts[source]})`}
           </SelectItem>
         ))}
       </SelectContent>
