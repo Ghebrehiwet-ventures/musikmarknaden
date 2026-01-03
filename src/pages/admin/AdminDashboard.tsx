@@ -303,7 +303,7 @@ export default function AdminDashboard() {
                               {' • '}
                               {source.last_sync_status === 'success' ? (
                                 <span className="text-green-600 inline-flex items-center gap-1">
-                                  <CheckCircle className="w-3 h-3" /> {source.last_sync_count} annonser
+                                  <CheckCircle className="w-3 h-3" /> {source.ad_count} annonser
                                 </span>
                               ) : (
                                 <span className="text-destructive inline-flex items-center gap-1">
