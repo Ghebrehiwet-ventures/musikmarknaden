@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { adminApi, ScrapingSource } from '@/lib/adminApi';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Plus, Pencil, Trash2, RefreshCw } from 'lucide-react';
+import { Loader2, Plus, Pencil, Trash2, RefreshCw, Eye, ExternalLink, ImageOff } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { sv } from 'date-fns/locale';
 
@@ -19,12 +19,26 @@ const SOURCE_TYPES = [
   { value: 'firecrawl_crawl', label: 'Firecrawl (crawl)' },
 ];
 
+interface PreviewProduct {
+  title: string;
+  ad_url: string;
+  price_text: string | null;
+  price_amount: number | null;
+  location: string;
+  image_url: string;
+  category: string;
+}
+
 export default function AdminSources() {
   const [sources, setSources] = useState<ScrapingSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
+  const [previewProducts, setPreviewProducts] = useState<PreviewProduct[]>([]);
+  const [previewSourceName, setPreviewSourceName] = useState('');
   const [editingSource, setEditingSource] = useState<Partial<ScrapingSource> | null>(null);
   const { toast } = useToast();
 
@@ -129,6 +143,23 @@ export default function AdminSources() {
     }
   };
 
+  const handlePreview = async (id: string) => {
+    setPreviewing(id);
+    try {
+      const result = await adminApi.previewSource(id);
+      setPreviewProducts(result.products);
+      setPreviewSourceName(result.source_name);
+      setPreviewDialogOpen(true);
+    } catch (error) {
+      toast({
+        title: 'Preview misslyckades',
+        description: error instanceof Error ? error.message : 'Ett fel uppstod',
+        variant: 'destructive',
+      });
+    } finally {
+      setPreviewing(null);
+    }
+  };
   const openCreateDialog = () => {
     setEditingSource({
       name: '',
@@ -303,8 +334,22 @@ export default function AdminSources() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            onClick={() => handlePreview(source.id)}
+                            disabled={previewing === source.id}
+                            title="Preview"
+                          >
+                            {previewing === source.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Eye className="w-4 h-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => handleSync(source.id)}
                             disabled={syncing === source.id || !source.is_active}
+                            title="Synka"
                           >
                             {syncing === source.id ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
@@ -316,6 +361,7 @@ export default function AdminSources() {
                             variant="ghost"
                             size="icon"
                             onClick={() => openEditDialog(source)}
+                            title="Redigera"
                           >
                             <Pencil className="w-4 h-4" />
                           </Button>
@@ -323,6 +369,7 @@ export default function AdminSources() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDelete(source.id)}
+                            title="Ta bort"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -335,6 +382,77 @@ export default function AdminSources() {
             )}
           </CardContent>
         </Card>
+
+        {/* Preview Dialog */}
+        <Dialog open={previewDialogOpen} onOpenChange={setPreviewDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-auto">
+            <DialogHeader>
+              <DialogTitle>Preview: {previewSourceName}</DialogTitle>
+              <DialogDescription>
+                Visar {previewProducts.length} exempel-annonser. Granska att titel, pris, bild och kategori ser korrekta ut.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {previewProducts.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  Inga produkter hittades. Kontrollera att parsern är korrekt konfigurerad.
+                </p>
+              ) : (
+                <div className="grid gap-4">
+                  {previewProducts.map((product, idx) => (
+                    <div key={idx} className="flex gap-4 p-4 border rounded-lg">
+                      <div className="w-24 h-24 flex-shrink-0 bg-muted rounded overflow-hidden">
+                        {product.image_url ? (
+                          <img 
+                            src={product.image_url} 
+                            alt={product.title}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                              (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                            }}
+                          />
+                        ) : null}
+                        <div className={`w-full h-full flex items-center justify-center ${product.image_url ? 'hidden' : ''}`}>
+                          <ImageOff className="w-8 h-8 text-muted-foreground" />
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-medium truncate">{product.title}</h4>
+                          <a 
+                            href={product.ad_url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex-shrink-0 text-muted-foreground hover:text-foreground"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </a>
+                        </div>
+                        <div className="mt-1 text-sm text-muted-foreground space-y-1">
+                          <p><strong>Pris:</strong> {product.price_text || 'Saknas'}</p>
+                          <p><strong>Kategori:</strong> {product.category}</p>
+                          <p><strong>Plats:</strong> {product.location || 'Saknas'}</p>
+                        </div>
+                        {!product.image_url && (
+                          <p className="mt-2 text-xs text-destructive">⚠️ Ingen bild hittades</p>
+                        )}
+                        {!product.price_text && (
+                          <p className="mt-1 text-xs text-amber-600">⚠️ Pris saknas</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPreviewDialogOpen(false)}>
+                Stäng
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AdminLayout>
   );
