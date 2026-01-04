@@ -373,41 +373,61 @@ function parseWooCommerce(html: string, baseUrl: string, siteName: string): Scra
 function parseGear4Music(html: string, baseUrl: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
   
-  // Gear4Music product cards
+  // Gear4Music uses <a class="g4m-grid-item product-card"> with data-g4m-inv attribute
+  // Structure: <a href="URL" class="g4m-grid-item product-card">
+  //   <h3 class="product-card-title">Title</h3>
+  //   <div class="product-card-image-wrapper"><picture>...<img class="product-card-image" src="..."></picture></div>
+  //   <div class="product-card-price">1 234 kr</div>
+  // </a>
+  
   const productMatches = html.matchAll(
-    /<div[^>]*class="[^"]*product-card[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi
+    /<a[^>]*href="([^"]+)"[^>]*class="[^"]*product-card[^"]*"[^>]*>([\s\S]*?)<\/a>/gi
   );
 
   for (const match of productMatches) {
-    const productHtml = match[1];
+    const adUrl = match[1];
+    const productHtml = match[2];
     
-    const urlMatch = productHtml.match(/href="([^"]+)"/);
-    const titleMatch = productHtml.match(/<a[^>]*class="[^"]*product-card__title[^"]*"[^>]*>(.*?)<\/a>/i) ||
-                       productHtml.match(/title="([^"]+)"/);
-    const priceMatch = productHtml.match(/(\d[\d\s,.]*)\s*(?:kr|SEK)/i);
-    const imgMatch = productHtml.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
+    // Title: <h3 class="product-card-title">Product Name</h3>
+    const titleMatch = productHtml.match(/<h3[^>]*class="[^"]*product-card-title[^"]*"[^>]*>([^<]+)<\/h3>/i);
     
-    const title = titleMatch ? (titleMatch[1] || '').replace(/<[^>]+>/g, '').trim() : '';
-    let adUrl = urlMatch ? urlMatch[1] : '';
+    // Price: <div class="product-card-price">1 234 kr</div>
+    const priceMatch = productHtml.match(/<div[^>]*class="[^"]*product-card-price[^"]*"[^>]*>([\d\s]+)\s*kr<\/div>/i);
+    
+    // Image: <img ... class="product-card-image" src="...">
+    const imgMatch = productHtml.match(/<img[^>]*class="[^"]*product-card-image[^"]*"[^>]*src="([^"]+)"/i) ||
+                     productHtml.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*product-card-image[^"]*"/i);
+    
+    const title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
     
     if (title && adUrl) {
-      if (!adUrl.startsWith('http')) {
-        adUrl = baseUrl.replace(/\/$/, '') + (adUrl.startsWith('/') ? adUrl : '/' + adUrl);
+      const priceText = priceMatch ? priceMatch[1].trim() + ' kr' : null;
+      const priceAmount = priceMatch ? parseInt(priceMatch[1].replace(/\s/g, ''), 10) : null;
+      
+      // Get the best image from srcset or src
+      let imageUrl = '';
+      if (imgMatch) {
+        imageUrl = imgMatch[1];
+      }
+      // Also try to get higher res from srcset if available
+      const srcsetMatch = productHtml.match(/srcset="[^"]*?(https:\/\/r2\.gear4music\.com\/media\/[^"]+\/215\/preview\.jpg)/i);
+      if (srcsetMatch) {
+        imageUrl = srcsetMatch[1];
       }
       
-      const { text, amount } = priceMatch ? parsePrice(priceMatch[0]) : { text: null, amount: null };
       products.push({
         title,
-        ad_url: adUrl,
-        price_text: text,
-        price_amount: amount,
+        ad_url: adUrl.startsWith('http') ? adUrl : baseUrl.replace(/\/$/, '') + adUrl,
+        price_text: priceText,
+        price_amount: priceAmount,
         location: 'Gear4Music',
-        image_url: imgMatch ? imgMatch[1] : '',
+        image_url: imageUrl,
         category: categorizeByKeywords(title),
       });
     }
   }
   
+  console.log(`Gear4Music parser found ${products.length} products`);
   return products;
 }
 
