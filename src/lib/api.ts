@@ -104,7 +104,33 @@ export async function fetchAdListings(): Promise<AdsResponse> {
 }
 
 export async function getAdDetails(ad_url: string): Promise<AdDetails> {
-  // Use Firecrawl to scrape ad details directly from Gearloop
+  // 1. Check client-side cache first (instant)
+  const { data: cached } = await supabase
+    .from('ad_details_cache')
+    .select('*')
+    .eq('ad_url', ad_url)
+    .maybeSingle();
+
+  if (cached) {
+    const daysSinceUpdate = (Date.now() - new Date(cached.updated_at).getTime()) / (1000 * 60 * 60 * 24);
+    
+    if (daysSinceUpdate < 7) {
+      // Return cached data immediately!
+      return {
+        title: cached.title || '',
+        description: cached.description || '',
+        price_text: cached.price_text,
+        price_amount: cached.price_amount,
+        location: cached.location || '',
+        images: (cached.images as string[]) || [],
+        contact_info: (cached.contact_info as { email?: string; phone?: string }) || {},
+        seller: cached.seller as { name?: string; username?: string } | undefined,
+        condition: cached.condition || undefined,
+      };
+    }
+  }
+
+  // 2. Cache miss or stale - call edge function
   const { data, error } = await supabase.functions.invoke('firecrawl-ad-details', {
     body: { ad_url },
   });
