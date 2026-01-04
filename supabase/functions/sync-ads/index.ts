@@ -624,69 +624,150 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
       sourceName = source.name;
     }
   }
-  
-  // Step 1: Fetch all ads from Gearloop using Firecrawl
-  const { allAds, newlyInsertedUrls } = await fetchAllAdsFromGearloop(firecrawlApiKey, supabase, supabaseUrl, sourceId, sourceName);
-  
-  if (allAds.length === 0) {
-    console.log('No ads fetched, aborting sync');
-    return { success: false, error: 'No ads fetched' };
-  }
 
-  // Step 2: Get current active ads from cache
-  const { data: existingAds, error: fetchError } = await supabase
-    .from('ad_listings_cache')
-    .select('ad_url')
-    .eq('is_active', true);
-
-  if (fetchError) {
-    console.error('Failed to fetch existing ads:', fetchError);
-    return { success: false, error: fetchError.message };
-  }
-
-  const existingUrls = new Set<string>(existingAds?.map((a: any) => a.ad_url) || []);
-  const newUrls = new Set<string>(allAds.map(a => a.ad_url));
-
-  // Step 3: Mark removed ads as inactive
-  const removedUrls = [...existingUrls].filter((url: string) => !newUrls.has(url));
-  if (removedUrls.length > 0) {
-    console.log(`Marking ${removedUrls.length} ads as inactive`);
-    const { error: updateError } = await supabase
-      .from('ad_listings_cache')
-      .update({ is_active: false })
-      .in('ad_url', removedUrls);
+  // Create sync log entry at start
+  let syncLogId: string | null = null;
+  if (sourceId) {
+    const { data: syncLog, error: logError } = await supabase
+      .from('sync_logs')
+      .insert({
+        source_id: sourceId,
+        status: 'running',
+        started_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
     
-    if (updateError) {
-      console.error('Failed to mark ads as inactive:', updateError);
+    if (logError) {
+      console.error('Failed to create sync log:', logError);
+    } else {
+      syncLogId = syncLog.id;
+      console.log(`Created sync log: ${syncLogId}`);
     }
   }
 
-  console.log(`All ${allAds.length} ads saved, ${newlyInsertedUrls.size} are new`);
+  try {
+    // Step 1: Fetch all ads from Gearloop using Firecrawl
+    const { allAds, newlyInsertedUrls } = await fetchAllAdsFromGearloop(firecrawlApiKey, supabase, supabaseUrl, sourceId, sourceName);
+    
+    if (allAds.length === 0) {
+      console.log('No ads fetched, aborting sync');
+      
+      // Update sync log with failure
+      if (syncLogId) {
+        await supabase
+          .from('sync_logs')
+          .update({
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+            error_message: 'No ads fetched from source',
+          })
+          .eq('id', syncLogId);
+      }
+      
+      return { success: false, error: 'No ads fetched' };
+    }
 
-  // Step 4: AI categorize new "other" ads
-  const aiNewResult = await aiCategorizeNewOtherAds(supabase, supabaseUrl, newlyInsertedUrls);
+    // Step 2: Get current active ads from cache
+    const { data: existingAds, error: fetchError } = await supabase
+      .from('ad_listings_cache')
+      .select('ad_url')
+      .eq('is_active', true);
 
-  // Step 5: Run cleanup categorization (process 20 existing "other" ads per sync)
-  const cleanupResult = await runCleanupCategorization(supabase, supabaseUrl, 20);
+    if (fetchError) {
+      console.error('Failed to fetch existing ads:', fetchError);
+      
+      // Update sync log with failure
+      if (syncLogId) {
+        await supabase
+          .from('sync_logs')
+          .update({
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+            error_message: fetchError.message,
+          })
+          .eq('id', syncLogId);
+      }
+      
+      return { success: false, error: fetchError.message };
+    }
 
-  // Step 6: Preload ad details for new ads (up to 40 per sync to build cache faster)
-  const preloadResult = await preloadAdDetails(supabase, supabaseUrl, newlyInsertedUrls, 40);
+    const existingUrls = new Set<string>(existingAds?.map((a: any) => a.ad_url) || []);
+    const newUrls = new Set<string>(allAds.map(a => a.ad_url));
 
-  // Step 7: Backfill images for any ads that are still missing them
-  const backfillResult = await backfillMissingImages(supabase, supabaseUrl, 50);
+    // Step 3: Mark removed ads as inactive
+    const removedUrls = [...existingUrls].filter((url: string) => !newUrls.has(url));
+    if (removedUrls.length > 0) {
+      console.log(`Marking ${removedUrls.length} ads as inactive`);
+      const { error: updateError } = await supabase
+        .from('ad_listings_cache')
+        .update({ is_active: false })
+        .in('ad_url', removedUrls);
+      
+      if (updateError) {
+        console.error('Failed to mark ads as inactive:', updateError);
+      }
+    }
 
-  const duration = Math.round((Date.now() - startTime) / 1000);
-  
-  return {
-    success: true,
-    totalAds: allAds.length,
-    newAds: newlyInsertedUrls.size,
-    removedAds: removedUrls.length,
-    aiCategorized: aiNewResult.categorized + cleanupResult.categorized,
-    detailsPreloaded: preloadResult.preloaded,
-    imagesBackfilled: backfillResult.backfilled,
-    duration: `${duration}s`,
-  };
+    console.log(`All ${allAds.length} ads saved, ${newlyInsertedUrls.size} are new`);
+
+    // Step 4: AI categorize new "other" ads
+    const aiNewResult = await aiCategorizeNewOtherAds(supabase, supabaseUrl, newlyInsertedUrls);
+
+    // Step 5: Run cleanup categorization (process 20 existing "other" ads per sync)
+    const cleanupResult = await runCleanupCategorization(supabase, supabaseUrl, 20);
+
+    // Step 6: Preload ad details for new ads (up to 40 per sync to build cache faster)
+    const preloadResult = await preloadAdDetails(supabase, supabaseUrl, newlyInsertedUrls, 40);
+
+    // Step 7: Backfill images for any ads that are still missing them
+    const backfillResult = await backfillMissingImages(supabase, supabaseUrl, 50);
+
+    const duration = Math.round((Date.now() - startTime) / 1000);
+
+    // Update sync log with success
+    if (syncLogId) {
+      await supabase
+        .from('sync_logs')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          ads_found: allAds.length,
+          ads_new: newlyInsertedUrls.size,
+          ads_removed: removedUrls.length,
+        })
+        .eq('id', syncLogId);
+      
+      console.log(`Sync log ${syncLogId} updated: completed`);
+    }
+    
+    return {
+      success: true,
+      totalAds: allAds.length,
+      newAds: newlyInsertedUrls.size,
+      removedAds: removedUrls.length,
+      aiCategorized: aiNewResult.categorized + cleanupResult.categorized,
+      detailsPreloaded: preloadResult.preloaded,
+      imagesBackfilled: backfillResult.backfilled,
+      duration: `${duration}s`,
+    };
+  } catch (error) {
+    // Update sync log with failure
+    if (syncLogId) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await supabase
+        .from('sync_logs')
+        .update({
+          status: 'failed',
+          completed_at: new Date().toISOString(),
+          error_message: errorMessage,
+        })
+        .eq('id', syncLogId);
+      
+      console.log(`Sync log ${syncLogId} updated: failed - ${errorMessage}`);
+    }
+    throw error;
+  }
 }
 
 Deno.serve(async (req) => {
