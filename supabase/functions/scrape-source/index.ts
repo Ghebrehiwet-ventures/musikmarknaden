@@ -249,6 +249,27 @@ function parseBlocket(html: string, baseUrl: string): ScrapedProduct[] {
   return products;
 }
 
+// DLX placeholder/badge images that should NOT be used as product images
+function isDlxPlaceholderImage(url: string): boolean {
+  if (!url) return true;
+  const lowUrl = url.toLowerCase();
+  return (
+    lowUrl.includes('sv_dlx_music_used') ||
+    lowUrl.includes('sv_dlx_music_topseller') ||
+    lowUrl.includes('sv_dlx_music_campaign') ||
+    lowUrl.includes('sv_dlx_music_news') ||
+    lowUrl.includes('sv_dlx_music_download') ||
+    lowUrl.includes('sv_dlx_music_demo') ||
+    lowUrl.includes('sv_dlx_music_bstock') ||
+    lowUrl.includes('404') ||
+    lowUrl.includes('logo') ||
+    lowUrl.includes('icon') ||
+    lowUrl.includes('avatar') ||
+    lowUrl.includes('banner') ||
+    lowUrl.includes('i.ytimg.com')
+  );
+}
+
 // Parse DLX Music HTML
 function parseDLXMusic(html: string, baseUrl: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
@@ -277,7 +298,13 @@ function parseDLXMusic(html: string, baseUrl: string): ScrapedProduct[] {
     const title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
     const adUrl = urlMatch ? urlMatch[1] : '';
     const priceAmount = priceMatch ? parseFloat(priceMatch[1]) : null;
-    const imageUrl = imgMatch ? imgMatch[1] : '';
+    
+    // Filter out placeholder/badge images
+    let imageUrl = imgMatch ? imgMatch[1] : '';
+    if (isDlxPlaceholderImage(imageUrl)) {
+      console.log(`DLX: Filtered badge image for "${title}": ${imageUrl}`);
+      imageUrl = '';
+    }
     
     if (title && adUrl) {
       products.push({
