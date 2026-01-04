@@ -78,10 +78,86 @@ interface Ad {
   image_url: string;
 }
 
+// Extract image URLs from HTML - builds a map from ad URL to image URL
+function extractImageUrlsFromHtml(html: string): Map<string, string> {
+  const urlToImage = new Map<string, string>();
+  
+  // Pattern 1: Look for <a href="...gearloop.se/ID-slug..."><img src="..."/>
+  // Gearloop uses cards with anchors containing images
+  const cardRegex = /<a[^>]+href=["']?(https:\/\/gearloop\.se\/\d+[^"'\s>]+)["']?[^>]*>[\s\S]*?<img[^>]+(?:src|data-src)=["']?([^"'\s>]+)["']?/gi;
+  
+  let match;
+  while ((match = cardRegex.exec(html)) !== null) {
+    const adUrl = match[1].split('?')[0]; // Remove query params
+    let imageUrl = match[2];
+    
+    // Normalize image URL
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      if (imageUrl.startsWith('//')) {
+        imageUrl = 'https:' + imageUrl;
+      } else if (imageUrl.startsWith('/')) {
+        imageUrl = 'https://gearloop.se' + imageUrl;
+      }
+    }
+    
+    if (imageUrl && imageUrl.includes('assets.gearloop.se')) {
+      urlToImage.set(adUrl, imageUrl);
+    }
+  }
+  
+  // Pattern 2: Reverse order - img before anchor (some layouts)
+  const reverseRegex = /<img[^>]+(?:src|data-src)=["']?([^"'\s>]+)["']?[^>]*>[\s\S]*?<a[^>]+href=["']?(https:\/\/gearloop\.se\/\d+[^"'\s>]+)["']?/gi;
+  
+  while ((match = reverseRegex.exec(html)) !== null) {
+    let imageUrl = match[1];
+    const adUrl = match[2].split('?')[0];
+    
+    // Normalize image URL
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      if (imageUrl.startsWith('//')) {
+        imageUrl = 'https:' + imageUrl;
+      } else if (imageUrl.startsWith('/')) {
+        imageUrl = 'https://gearloop.se' + imageUrl;
+      }
+    }
+    
+    // Only add if not already found and is a valid image
+    if (!urlToImage.has(adUrl) && imageUrl && imageUrl.includes('assets.gearloop.se')) {
+      urlToImage.set(adUrl, imageUrl);
+    }
+  }
+  
+  // Pattern 3: Look for background-image:url(...) near ad links
+  const bgImageRegex = /style=["'][^"']*background-image:\s*url\(["']?([^"')]+)["']?\)[^"']*["'][^>]*>[\s\S]*?<a[^>]+href=["']?(https:\/\/gearloop\.se\/\d+[^"'\s>]+)["']?/gi;
+  
+  while ((match = bgImageRegex.exec(html)) !== null) {
+    let imageUrl = match[1];
+    const adUrl = match[2].split('?')[0];
+    
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      if (imageUrl.startsWith('//')) {
+        imageUrl = 'https:' + imageUrl;
+      } else if (imageUrl.startsWith('/')) {
+        imageUrl = 'https://gearloop.se' + imageUrl;
+      }
+    }
+    
+    if (!urlToImage.has(adUrl) && imageUrl && imageUrl.includes('assets.gearloop.se')) {
+      urlToImage.set(adUrl, imageUrl);
+    }
+  }
+  
+  console.log(`Extracted ${urlToImage.size} image URLs from HTML`);
+  return urlToImage;
+}
+
 // Parse ads from Gearloop markdown
 // Gearloop ads now use format: https://gearloop.se/123456-ad-title
 function parseGearloopAds(html: string, markdown: string, internalCategory: string): Ad[] {
   const ads: Ad[] = [];
+  
+  // First extract image URLs from HTML
+  const imageMap = extractImageUrlsFromHtml(html);
   
   // Parse markdown format: #### [Title](https://gearloop.se/123456-slug)
   // Followed by: price date
@@ -90,7 +166,7 @@ function parseGearloopAds(html: string, markdown: string, internalCategory: stri
   let match;
   while ((match = adBlockRegex.exec(markdown)) !== null) {
     const title = match[1].trim();
-    const adUrl = match[2].trim();
+    const adUrl = match[2].trim().split('?')[0]; // Remove query params
     const priceAndDate = match[3].trim();
     
     // Parse price and date from "5 000 kr 17 dec" format
@@ -101,6 +177,9 @@ function parseGearloopAds(html: string, markdown: string, internalCategory: stri
     const dateMatch = priceAndDate.match(/(\d+\s+\w+)$/);
     const dateStr = dateMatch ? dateMatch[1] : '';
     
+    // Look up image URL from our extracted map
+    const imageUrl = imageMap.get(adUrl) || '';
+    
     ads.push({
       title,
       ad_url: adUrl,
@@ -108,7 +187,7 @@ function parseGearloopAds(html: string, markdown: string, internalCategory: stri
       location: '',
       date: dateStr || new Date().toISOString().split('T')[0],
       price_text: priceText,
-      image_url: '',
+      image_url: imageUrl,
     });
   }
   
@@ -118,11 +197,12 @@ function parseGearloopAds(html: string, markdown: string, internalCategory: stri
     const seenUrls = new Set<string>();
     
     while ((match = urlRegex.exec(markdown)) !== null) {
-      const adUrl = match[0];
+      const adUrl = match[0].split('?')[0];
       if (!seenUrls.has(adUrl)) {
         seenUrls.add(adUrl);
         const slug = match[2];
         const title = slug.replace(/-/g, ' ');
+        const imageUrl = imageMap.get(adUrl) || '';
         
         ads.push({
           title,
@@ -131,13 +211,14 @@ function parseGearloopAds(html: string, markdown: string, internalCategory: stri
           location: '',
           date: new Date().toISOString().split('T')[0],
           price_text: null,
-          image_url: '',
+          image_url: imageUrl,
         });
       }
     }
   }
   
-  console.log(`Found ${ads.length} ads in category`);
+  const withImages = ads.filter(a => a.image_url).length;
+  console.log(`Found ${ads.length} ads in category (${withImages} with images)`);
   return ads;
 }
 
@@ -159,7 +240,7 @@ async function fetchCategoryWithFirecrawl(
       body: JSON.stringify({
         url,
         formats: ['markdown', 'html'],
-        onlyMainContent: true,
+        onlyMainContent: false, // Need full HTML to extract thumbnail images
         waitFor: 3000,
       }),
     });
@@ -288,6 +369,65 @@ async function fetchAllAdsFromGearloop(
 
   console.log(`Total unique ads fetched: ${allAds.length}, New ads: ${newlyInsertedUrls.size}`);
   return { allAds, newlyInsertedUrls };
+}
+
+// Backfill images for ads that are missing them
+async function backfillMissingImages(supabase: any, supabaseUrl: string, limit: number = 30): Promise<{ backfilled: number; failed: number }> {
+  // Find ads with empty image_url
+  const { data: adsWithoutImages, error } = await supabase
+    .from('ad_listings_cache')
+    .select('id, ad_url, title')
+    .eq('is_active', true)
+    .or('image_url.is.null,image_url.eq.')
+    .limit(limit);
+
+  if (error) {
+    console.error('Failed to fetch ads without images:', error);
+    return { backfilled: 0, failed: 0 };
+  }
+
+  if (!adsWithoutImages || adsWithoutImages.length === 0) {
+    console.log('No ads missing images');
+    return { backfilled: 0, failed: 0 };
+  }
+
+  console.log(`Backfilling images for ${adsWithoutImages.length} ads...`);
+  
+  let backfilled = 0;
+  let failed = 0;
+
+  for (const ad of adsWithoutImages) {
+    try {
+      const details = await fetchAdDetails(supabaseUrl, ad.ad_url);
+      
+      if (details && details.images && details.images.length > 0) {
+        const imageUrl = details.images[0];
+        
+        const { error: updateError } = await supabase
+          .from('ad_listings_cache')
+          .update({ image_url: imageUrl })
+          .eq('id', ad.id);
+        
+        if (updateError) {
+          console.error(`Failed to update image for "${ad.title}":`, updateError);
+          failed++;
+        } else {
+          console.log(`Backfilled image: ${ad.title.substring(0, 30)}...`);
+          backfilled++;
+        }
+      } else {
+        failed++;
+      }
+      
+      await delay(500);
+    } catch (err) {
+      console.error(`Error backfilling ${ad.ad_url}:`, err);
+      failed++;
+    }
+  }
+
+  console.log(`Image backfill complete: ${backfilled} backfilled, ${failed} failed`);
+  return { backfilled, failed };
 }
 
 // Pre-load ad details for new ads (runs in background)
@@ -517,6 +657,9 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
   // Step 6: Preload ad details for new ads (up to 15 per sync to avoid timeouts)
   const preloadResult = await preloadAdDetails(supabase, supabaseUrl, newlyInsertedUrls, 15);
 
+  // Step 7: Backfill images for any ads that are still missing them
+  const backfillResult = await backfillMissingImages(supabase, supabaseUrl, 30);
+
   const duration = Math.round((Date.now() - startTime) / 1000);
   
   return {
@@ -526,6 +669,7 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
     removedAds: removedUrls.length,
     aiCategorized: aiNewResult.categorized + cleanupResult.categorized,
     detailsPreloaded: preloadResult.preloaded,
+    imagesBackfilled: backfillResult.backfilled,
     duration: `${duration}s`,
   };
 }
