@@ -78,9 +78,24 @@ interface Ad {
   image_url: string;
 }
 
+// Clean image URL by removing HTML entities and quotes
+function cleanImageUrl(url: string): string {
+  return url
+    .replace(/&quot;/g, '')      // Remove &quot;
+    .replace(/&amp;/g, '&')      // Decode &amp;
+    .replace(/^["']|["']$/g, '') // Remove quotes at start/end
+    .trim();
+}
+
 // Extract image URLs from HTML - builds a map from ad URL to image URL
-function extractImageUrlsFromHtml(html: string): Map<string, string> {
+function extractImageUrlsFromHtml(rawHtml: string): Map<string, string> {
   const urlToImage = new Map<string, string>();
+  
+  // Decode HTML entities BEFORE regex parsing
+  const html = rawHtml
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;/g, "'");
   
   // Pattern 1: Look for <a href="...gearloop.se/ID-slug..."><img src="..."/>
   // Gearloop uses cards with anchors containing images
@@ -89,7 +104,7 @@ function extractImageUrlsFromHtml(html: string): Map<string, string> {
   let match;
   while ((match = cardRegex.exec(html)) !== null) {
     const adUrl = match[1].split('?')[0]; // Remove query params
-    let imageUrl = match[2];
+    let imageUrl = cleanImageUrl(match[2]);
     
     // Normalize image URL
     if (imageUrl && !imageUrl.startsWith('http')) {
@@ -109,7 +124,7 @@ function extractImageUrlsFromHtml(html: string): Map<string, string> {
   const reverseRegex = /<img[^>]+(?:src|data-src)=["']?([^"'\s>]+)["']?[^>]*>[\s\S]*?<a[^>]+href=["']?(https:\/\/gearloop\.se\/\d+[^"'\s>]+)["']?/gi;
   
   while ((match = reverseRegex.exec(html)) !== null) {
-    let imageUrl = match[1];
+    let imageUrl = cleanImageUrl(match[1]);
     const adUrl = match[2].split('?')[0];
     
     // Normalize image URL
@@ -131,7 +146,7 @@ function extractImageUrlsFromHtml(html: string): Map<string, string> {
   const bgImageRegex = /style=["'][^"']*background-image:\s*url\(["']?([^"')]+)["']?\)[^"']*["'][^>]*>[\s\S]*?<a[^>]+href=["']?(https:\/\/gearloop\.se\/\d+[^"'\s>]+)["']?/gi;
   
   while ((match = bgImageRegex.exec(html)) !== null) {
-    let imageUrl = match[1];
+    let imageUrl = cleanImageUrl(match[1]);
     const adUrl = match[2].split('?')[0];
     
     if (imageUrl && !imageUrl.startsWith('http')) {
