@@ -690,47 +690,84 @@ function extractImages(html: string, sourceType: string): string[] {
       console.log('Gearloop: No images found in article - ad has no images');
     }
   } else if (sourceType === 'dlxmusic') {
-    // DLX Music: Extract ONLY real product images from /storage/ path
-    // Avoid badges, banners, related products
+    // DLX Music: Extract ONLY from the main product gallery section
+    // This section contains the lightbox images for the actual product
+    // DO NOT extract from the entire page - that picks up "Relaterade Produkter"
     
-    // 1. Look for main product gallery images first (most reliable)
-    const galleryRegex = /https?:\/\/www\.dlxmusic\.se\/storage\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
-    let match;
     const seenUrls = new Set<string>();
     
-    while ((match = galleryRegex.exec(html)) !== null) {
-      const url = match[0];
+    // 1. Try to find the lightbox gallery section specifically
+    // DLX uses <section id="lightBoxImages"> for the product image gallery
+    const galleryMatch = html.match(/<section[^>]*id="lightBoxImages"[^>]*>([\s\S]*?)<\/section>/i);
+    
+    if (galleryMatch) {
+      const galleryHtml = galleryMatch[1];
+      console.log('DLX: Found lightBoxImages section');
       
-      // Skip if already seen or is a placeholder
-      if (seenUrls.has(url)) continue;
-      if (isDlxPlaceholderImage(url)) {
-        console.log('DLX details: Filtered placeholder image:', url);
-        continue;
+      // Extract data-src attributes first (these are the full-size images)
+      const dataSrcRegex = /data-src="([^"]+)"/gi;
+      let match;
+      while ((match = dataSrcRegex.exec(galleryHtml)) !== null) {
+        let url = match[1];
+        
+        // Make absolute URL if relative
+        if (url.startsWith('/')) {
+          url = 'https://www.dlxmusic.se' + url;
+        }
+        
+        // Skip placeholders
+        if (seenUrls.has(url)) continue;
+        if (isDlxPlaceholderImage(url)) {
+          console.log('DLX details: Filtered placeholder image:', url);
+          continue;
+        }
+        
+        seenUrls.add(url);
+        images.push(url);
       }
       
-      seenUrls.add(url);
-      images.push(url);
+      // If no data-src, try regular src attributes within the gallery
+      if (images.length === 0) {
+        const srcRegex = /src="(https?:\/\/www\.dlxmusic\.se\/storage\/[^"]+)"/gi;
+        while ((match = srcRegex.exec(galleryHtml)) !== null) {
+          const url = match[1];
+          if (seenUrls.has(url)) continue;
+          if (isDlxPlaceholderImage(url)) continue;
+          seenUrls.add(url);
+          images.push(url);
+        }
+      }
+    } else {
+      console.log('DLX: No lightBoxImages section found, trying product-detail__images-container');
+      
+      // Fallback: try product-detail__images-container 
+      const containerMatch = html.match(/<div[^>]*class="[^"]*product-detail__images[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<div[^>]*class="[^"]*(?:small-12|medium-|product-detail__info)/i);
+      
+      if (containerMatch) {
+        const containerHtml = containerMatch[1];
+        
+        const imgRegex = /src="(https?:\/\/www\.dlxmusic\.se\/storage\/[^"]+)"/gi;
+        let match;
+        while ((match = imgRegex.exec(containerHtml)) !== null) {
+          const url = match[1];
+          if (seenUrls.has(url)) continue;
+          if (isDlxPlaceholderImage(url)) continue;
+          seenUrls.add(url);
+          images.push(url);
+        }
+      }
     }
     
-    // 2. Also check for images in DLX CDN (if any)
-    const cdnRegex = /https?:\/\/cdn\.dlxmusic\.se\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
-    while ((match = cdnRegex.exec(html)) !== null) {
-      const url = match[0];
-      if (seenUrls.has(url)) continue;
-      if (isDlxPlaceholderImage(url)) continue;
-      seenUrls.add(url);
-      images.push(url);
+    // NO FALLBACK to generic /storage/ extraction!
+    // If we can't find the gallery, the product has no images
+    
+    console.log(`DLX: Found ${images.length} images in product gallery`);
+    
+    if (images.length === 0) {
+      console.log('DLX: No valid product images found in gallery - ad has no images');
     }
     
-    // Cap at max 12 images and log result
-    const cappedImages = images.slice(0, 12);
-    console.log(`DLX: Found ${images.length} images, returning ${cappedImages.length}`);
-    
-    if (cappedImages.length === 0) {
-      console.log('DLX: No valid product images found - ad has no images');
-    }
-    
-    return cappedImages;
+    return images;
   } else {
     // Generic image extraction
     const genericRegex = /https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
