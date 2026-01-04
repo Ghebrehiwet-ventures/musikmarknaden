@@ -593,20 +593,25 @@ async function scrapeSinglePage(
 }
 
 // Main scrape function that handles all sources with pagination support
+// If previewLimit is set, stop after getting enough products (for preview mode)
 async function scrapeSource(
   firecrawlApiKey: string, 
   scrapeUrl: string, 
   baseUrl: string, 
-  sourceName: string
+  sourceName: string,
+  previewLimit?: number
 ): Promise<ScrapedProduct[]> {
   console.log(`Starting scrape for ${sourceName} from ${scrapeUrl}...`);
+  if (previewLimit) {
+    console.log(`PREVIEW MODE: Will stop after ${previewLimit} products`);
+  }
   
   const domain = new URL(scrapeUrl).hostname.toLowerCase();
   const allProducts: ScrapedProduct[] = [];
   
   // DLX Music needs pagination
   if (domain.includes('dlxmusic')) {
-    const maxPages = 10;
+    const maxPages = previewLimit ? 1 : 10; // Only 1 page in preview mode
     let page = 1;
     let pageUrl = scrapeUrl;
     
@@ -619,6 +624,12 @@ async function scrapeSource(
       
       console.log(`Got ${products.length} products from page ${page}`);
       allProducts.push(...products);
+      
+      // In preview mode, stop if we have enough
+      if (previewLimit && allProducts.length >= previewLimit) {
+        console.log(`Preview: Got enough products (${allProducts.length}), stopping`);
+        break;
+      }
       
       // Check if there's a next page - look for page=N+1 in pagination links
       const nextPage = page + 1;
@@ -645,8 +656,8 @@ async function scrapeSource(
     );
     allProducts.push(...products);
     
-    // If we got very few products, try generic parser as well
-    if (allProducts.length < 5) {
+    // If we got very few products (and not in preview mode), try generic parser as well
+    if (!previewLimit && allProducts.length < 5) {
       console.log(`Only found ${allProducts.length} products with specific parser, trying generic...`);
       const genericProducts = parseGeneric(html, markdown, baseUrl, sourceName);
       
@@ -685,6 +696,8 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const body = await req.json().catch(() => ({}));
     const sourceId = body.source_id;
+    const previewMode = body.preview === true;
+    const previewLimit = 5;
 
     if (!sourceId) {
       throw new Error('source_id is required');
@@ -705,7 +718,7 @@ Deno.serve(async (req) => {
       throw new Error(`No scrape_url configured for source: ${source.name}`);
     }
 
-    console.log(`Scraping source: ${source.name} (${source.id})`);
+    console.log(`${previewMode ? 'PREVIEW' : 'Scraping'} source: ${source.name} (${source.id})`);
     console.log(`URL: ${source.scrape_url}`);
     console.log(`Base URL: ${source.base_url}`);
 
@@ -720,14 +733,38 @@ Deno.serve(async (req) => {
     );
 
     // Scrape products using the configured URL
-    const products = await scrapeSource(
+    let products = await scrapeSource(
       firecrawlApiKey, 
       source.scrape_url, 
       source.base_url || new URL(source.scrape_url).origin,
-      source.name
+      source.name,
+      previewMode ? previewLimit : undefined
     );
 
-    // Prepare ads for upsert
+    // Apply category mappings
+    products = products.map(p => ({
+      ...p,
+      category: categoryMap.get(p.category.toLowerCase()) || p.category,
+    }));
+
+    // PREVIEW MODE: Return products without saving
+    if (previewMode) {
+      const previewProducts = products.slice(0, previewLimit);
+      console.log(`Preview complete for ${source.name}: returning ${previewProducts.length} products`);
+      
+      return new Response(
+        JSON.stringify({
+          success: true,
+          preview: true,
+          source_name: source.name,
+          products: previewProducts,
+          total_found: products.length,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // FULL SYNC: Prepare ads for upsert
     const now = new Date().toISOString();
     const adsToUpsert = products.map(product => ({
       ad_url: product.ad_url,
@@ -737,7 +774,7 @@ Deno.serve(async (req) => {
       price_amount: product.price_amount,
       location: product.location,
       image_url: product.image_url,
-      category: categoryMap.get(product.category.toLowerCase()) || product.category,
+      category: product.category,
       date: now.split('T')[0],
       is_active: true,
       last_seen_at: now,

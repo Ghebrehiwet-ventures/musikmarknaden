@@ -108,6 +108,48 @@ export const adminApi = {
     return adminFetch('sync', { source_id });
   },
 
+  async previewSource(source_id: string): Promise<{ 
+    success: boolean; 
+    source_name: string;
+    products: Array<{
+      title: string;
+      ad_url: string;
+      price_text: string | null;
+      price_amount: number | null;
+      location: string;
+      image_url: string;
+      category: string;
+    }>;
+    total_found: number;
+  }> {
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
+
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scrape-source`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ source_id, preview: true }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Request failed: ${response.status}`);
+    }
+
+    return response.json();
+  },
+
   async runBatchCategorize(options: { 
     category?: string; 
     source_id?: string; 
