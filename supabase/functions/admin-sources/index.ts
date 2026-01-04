@@ -187,8 +187,8 @@ Deno.serve(async (req) => {
           let syncResult;
           
           if (sourceData.source_type === 'firecrawl_list') {
-            // Call scrape-musikborsen function
-            const { data: scrapeData, error: scrapeError } = await adminClient.functions.invoke('scrape-musikborsen', {
+            // Call scrape-source function with dynamic URL from source config
+            const { data: scrapeData, error: scrapeError } = await adminClient.functions.invoke('scrape-source', {
               body: { source_id: sourceId }
             });
             

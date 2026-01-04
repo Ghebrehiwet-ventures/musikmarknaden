@@ -1,0 +1,741 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+interface ScrapedProduct {
+  title: string;
+  ad_url: string;
+  price_text: string | null;
+  price_amount: number | null;
+  location: string;
+  image_url: string;
+  category: string;
+}
+
+function parsePrice(priceText: string): { text: string; amount: number | null } {
+  const cleanText = priceText.replace(/\s+/g, ' ').trim();
+  const match = cleanText.match(/(\d[\d\s]*)/);
+  if (match) {
+    const amount = parseInt(match[1].replace(/\s/g, ''), 10);
+    return { text: cleanText, amount: isNaN(amount) ? null : amount };
+  }
+  return { text: cleanText, amount: null };
+}
+
+// Keyword-based categorization
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  'instrument': [
+    'gitarr', 'guitar', 'fender', 'gibson', 'ibanez', 'epiphone', 'schecter', 'stratocaster', 'telecaster', 'les paul',
+    'prs', 'paul reed smith', 'g&l', 'music man', 'suhr', 'charvel', 'jackson', 'esp', 'ltd', 'squier',
+    'gretsch', 'rickenbacker', 'taylor', 'martin', 'takamine', 'yamaha fg', 'yamaha c', 'cordoba', 'godin',
+    'hagström', 'hagstrom', 'larrivee', 'collings', 'santa cruz', 'guild', 'ovation', 'breedlove',
+    'bas', 'bass', 'precision', 'jazz bass', 'hofner', 'stingray', 'warwick', 'sandberg', 'spector', 'lakland',
+    'trumm', 'drum', 'virvel', 'snare', 'cymbal', 'hi-hat', 'pearl', 'sonor', 'tama', 'dw', 'zildjian', 'sabian',
+    'mapex', 'ludwig', 'paiste', 'meinl', 'istanbul', 'slagverk', 'percussion',
+    'piano', 'flygel', 'rhodes', 'wurlitzer', 'clavinet', 'keyboard', 'tangent',
+    'saxofon', 'trumpet', 'violin', 'cello', 'flöjt', 'klarinett', 'trombon',
+    'ukulele', 'mandolin', 'banjo', 'dragspel', 'accordion', 'fiol', 'viola', 'kontrabas'
+  ],
+  'amplifiers': [
+    'förstärkare', 'amp', 'combo', 'marshall', 'vox', 'mesa', 'boogie', 'mesa boogie',
+    'peavey', 'engl', 'orange', 'blackstar', 'laney', 'ampeg', 'head', 'topteil',
+    'cab', 'cabinet', 'speaker', 'högtalare', 'rörtop', 'tube amp', 'rörförstärkare',
+    'fender amp', 'fender twin', 'fender deluxe', 'blues junior', 'hot rod',
+    'soldano', 'bogner', 'friedman', 'diezel', 'hughes & kettner', 'randall',
+    'markbass', 'hartke', 'gallien krueger', 'aguilar', 'eden',
+    'kemper', 'line 6', 'helix', 'fractal', 'axe-fx', 'neural dsp', 'quad cortex'
+  ],
+  'pedals-effects': [
+    'pedal', 'effekt', 'effect', 'drive', 'overdrive', 'distortion', 'fuzz', 'effektpedal',
+    'delay', 'reverb', 'echo', 'chorus', 'flanger', 'phaser', 'wah', 'tremolo',
+    'boss', 'mxr', 'electro-harmonix', 'ehx', 'strymon', 'eventide', 'tc electronic',
+    'walrus', 'jhs', 'keeley', 'tube screamer', 'big muff', 'looper', 'multieffekt',
+    'fulltone', 'earthquaker', 'chase bliss', 'meris', 'source audio',
+    'dunlop', 'cry baby', 'klon', 'tuner pedal', 'noise gate', 'compressor pedal', 'booster'
+  ],
+  'synth-modular': [
+    'synth', 'synthesizer', 'moog', 'korg', 'roland', 'yamaha dx', 'prophet', 'juno', 'jupiter',
+    'eurorack', 'modular', 'sequencer', 'arturia', 'nord', 'access virus', 'dave smith', 'sequential',
+    'minilogue', 'monologue', 'microkorg', 'minimoog', 'op-1', 'teenage engineering',
+    'sampler', 'mpc', 'maschine', 'elektron', 'octatrack', 'digitakt', 'digitone',
+    'analogsynt', 'polysynth', 'monosynth', 'oberheim', 'waldorf', 'hydrasynth',
+    'nord stage', 'nord electro', 'nord lead'
+  ],
+  'studio': [
+    'mikrofon', 'microphone', 'neumann', 'shure', 'sennheiser', 'akg', 'rode', 'audio-technica',
+    'interface', 'ljudkort', 'audio interface', 'preamp', 'kompressor', 'compressor',
+    'eq', 'equalizer', 'mixer', 'mackie', 'mixerbord',
+    'monitor', 'studiomonitor', 'focusrite', 'universal audio', 'uad', 'api', 'neve', 'ssl',
+    'scarlett', 'apollo', 'genelec', 'adam audio', 'yamaha hs', 'krk', 'jbl', 'dynaudio',
+    'sm57', 'sm58', 'u87', 'c414', 'at2020', 'nt1', 'condensator', 'kondensator',
+    'audient', 'motu', 'rme', 'apogee', 'steinberg', 'presonus', 'antelope',
+    'outboard', 'channel strip', 'la-2a', '1176', 'dbx', 'distressor', 'patchbay', 'di-box'
+  ],
+  'dj-live': [
+    'dj', 'turntable', 'skivspelare', 'cdj', 'controller', 'pioneer', 'technics', 'rane', 'serato', 'traktor',
+    'pa', 'pa-system', 'line array', 'subwoofer', 'sub', 'aktiv högtalare', 'powered speaker',
+    'ljus', 'lighting', 'dmx', 'moving head', 'laser', 'strobe', 'fog', 'haze',
+    'denon dj', 'numark', 'allen & heath', 'xone', 'djm', 'ddj', 'rekordbox',
+    'in-ear', 'iem', 'monitor system', 'stagebox', 'snake', 'splitter',
+    'turbosound', 'rcf', 'qsc', 'electro-voice', 'jbl prx', 'jbl eon', 'yamaha dxr'
+  ],
+  'accessories-parts': [
+    'case', 'väska', 'bag', 'gigbag', 'flightcase', 'hardcase', 'softcase',
+    'stativ', 'stand', 'kabel', 'cable', 'sträng', 'string', 'plektrum', 'pick',
+    'strap', 'rem', 'gitarrem', 'mikrofonstativ', 'pedalboard', 'pickups', 'pickup',
+    'sadel', 'bridge', 'tuner', 'stämapparat', 'capo', 'slide',
+    'dämpare', 'mute', 'cymbalställ', 'hi-hat stand', 'snare stand',
+    'noter', 'notställ', 'metronom', 'strängvinda',
+    'adapter', 'power supply', 'strömförsörjning', 'isolated power',
+    'humbucker', 'single coil', 'p90', 'emg', 'seymour duncan', 'dimarzio'
+  ]
+};
+
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
+const SHORT_KEYWORDS = new Set(['amp', 'bas', 'cab', 'dj', 'pa', 'eq', 'sub']);
+
+function categorizeByKeywords(title: string): string {
+  const decoded = decodeHtmlEntities(title);
+  const titleLower = decoded.toLowerCase();
+  
+  for (const keyword of CATEGORY_KEYWORDS['instrument']) {
+    const kw = keyword.toLowerCase();
+    if (SHORT_KEYWORDS.has(kw)) {
+      const regex = new RegExp(`\\b${kw}\\b`, 'i');
+      if (regex.test(titleLower)) return 'instrument';
+    } else if (titleLower.includes(kw)) {
+      return 'instrument';
+    }
+  }
+  
+  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (category === 'instrument') continue;
+    for (const keyword of keywords) {
+      const kw = keyword.toLowerCase();
+      if (SHORT_KEYWORDS.has(kw)) {
+        const regex = new RegExp(`\\b${kw}\\b`, 'i');
+        if (regex.test(titleLower)) return category;
+      } else if (titleLower.includes(kw)) {
+        return category;
+      }
+    }
+  }
+  return 'other';
+}
+
+// ============ SITE-SPECIFIC PARSERS ============
+
+// Parse Musikbörsen HTML
+function parseMusikborsen(html: string, baseUrl: string): ScrapedProduct[] {
+  const products: ScrapedProduct[] = [];
+  
+  const productMatches = html.matchAll(
+    /<li[^>]*class="[^"]*secondhand-product-excerpt[^"]*"[^>]*>([\s\S]*?)<\/li>/gi
+  );
+
+  for (const match of productMatches) {
+    const productHtml = match[1];
+    
+    const urlMatch = productHtml.match(/href="([^"]+)"/);
+    const adUrl = urlMatch ? urlMatch[1] : '';
+    
+    const titleMatch = productHtml.match(/<h3[^>]*class="[^"]*heading[^"]*"[^>]*>(.*?)<\/h3>/i);
+    const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+    
+    const priceMatch = productHtml.match(/<p[^>]*class="[^"]*price[^"]*"[^>]*>(.*?)<\/p>/i);
+    const priceText = priceMatch ? priceMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+    const { text: priceTextClean, amount: priceAmount } = parsePrice(priceText);
+    
+    const storeMatch = productHtml.match(/<p[^>]*class="[^"]*store[^"]*"[^>]*>(.*?)<\/p>/i);
+    const location = storeMatch ? storeMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+    
+    const imgMatch = productHtml.match(/(?:data-src|src)="([^"]+)"/);
+    const imageUrl = imgMatch ? imgMatch[1] : '';
+    
+    const category = categorizeByKeywords(title);
+
+    if (title && adUrl) {
+      products.push({
+        title,
+        ad_url: adUrl,
+        price_text: priceTextClean || null,
+        price_amount: priceAmount,
+        location,
+        image_url: imageUrl,
+        category,
+      });
+    }
+  }
+  
+  return products;
+}
+
+// Parse Blocket JSON API response
+function parseBlocket(html: string, baseUrl: string): ScrapedProduct[] {
+  const products: ScrapedProduct[] = [];
+  
+  // Blocket uses a JSON API, try to extract JSON data
+  try {
+    // Look for __NEXT_DATA__ or similar JSON payload
+    const jsonMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+    if (jsonMatch) {
+      const jsonData = JSON.parse(jsonMatch[1]);
+      const ads = jsonData?.props?.pageProps?.ads || jsonData?.props?.pageProps?.items || [];
+      
+      for (const ad of ads) {
+        const title = ad.subject || ad.title || '';
+        const adUrl = ad.url || ad.share_url || (ad.ad_id ? `${baseUrl}/annons/${ad.ad_id}` : '');
+        const priceText = ad.price?.value ? `${ad.price.value} kr` : '';
+        const { text, amount } = parsePrice(priceText);
+        const location = ad.location?.name || ad.location?.city || '';
+        const imageUrl = ad.images?.[0]?.url || ad.image?.url || '';
+        
+        if (title && adUrl) {
+          products.push({
+            title,
+            ad_url: adUrl.startsWith('http') ? adUrl : `${baseUrl}${adUrl}`,
+            price_text: text || null,
+            price_amount: amount,
+            location,
+            image_url: imageUrl,
+            category: categorizeByKeywords(title),
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.log('Blocket JSON parsing failed, trying HTML fallback');
+  }
+  
+  // HTML fallback for Blocket
+  const adMatches = html.matchAll(/<article[^>]*class="[^"]*Item[^"]*"[^>]*>([\s\S]*?)<\/article>/gi);
+  for (const match of adMatches) {
+    const adHtml = match[1];
+    
+    const urlMatch = adHtml.match(/href="([^"]+)"/);
+    const titleMatch = adHtml.match(/<h2[^>]*>(.*?)<\/h2>/i) || adHtml.match(/title="([^"]+)"/);
+    const priceMatch = adHtml.match(/(\d[\d\s]*)\s*kr/i);
+    const imgMatch = adHtml.match(/src="([^"]+)"/);
+    
+    const title = titleMatch ? (titleMatch[1] || '').replace(/<[^>]+>/g, '').trim() : '';
+    const adUrl = urlMatch ? urlMatch[1] : '';
+    
+    if (title && adUrl) {
+      const { text, amount } = priceMatch ? parsePrice(priceMatch[0]) : { text: null, amount: null };
+      products.push({
+        title,
+        ad_url: adUrl.startsWith('http') ? adUrl : `${baseUrl}${adUrl}`,
+        price_text: text,
+        price_amount: amount,
+        location: '',
+        image_url: imgMatch ? imgMatch[1] : '',
+        category: categorizeByKeywords(title),
+      });
+    }
+  }
+  
+  return products;
+}
+
+// Parse DLX Music HTML
+function parseDLXMusic(html: string, baseUrl: string): ScrapedProduct[] {
+  const products: ScrapedProduct[] = [];
+  
+  // DLX uses product cards with class patterns
+  const productMatches = html.matchAll(
+    /<div[^>]*class="[^"]*product[^"]*card[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi
+  );
+
+  for (const match of productMatches) {
+    const productHtml = match[1];
+    
+    const urlMatch = productHtml.match(/href="([^"]+)"/);
+    const titleMatch = productHtml.match(/<h[23][^>]*>(.*?)<\/h[23]>/i) || 
+                       productHtml.match(/class="[^"]*title[^"]*"[^>]*>(.*?)</i);
+    const priceMatch = productHtml.match(/(\d[\d\s]*)\s*(?:kr|SEK)/i);
+    const imgMatch = productHtml.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
+    
+    const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+    let adUrl = urlMatch ? urlMatch[1] : '';
+    
+    if (title && adUrl) {
+      if (!adUrl.startsWith('http')) {
+        adUrl = baseUrl.replace(/\/$/, '') + (adUrl.startsWith('/') ? adUrl : '/' + adUrl);
+      }
+      
+      const { text, amount } = priceMatch ? parsePrice(priceMatch[0]) : { text: null, amount: null };
+      products.push({
+        title,
+        ad_url: adUrl,
+        price_text: text,
+        price_amount: amount,
+        location: 'DLX Music',
+        image_url: imgMatch ? imgMatch[1] : '',
+        category: categorizeByKeywords(title),
+      });
+    }
+  }
+  
+  return products;
+}
+
+// Parse WooCommerce sites (Jam, Slagverket, Uppsala MV)
+function parseWooCommerce(html: string, baseUrl: string, siteName: string): ScrapedProduct[] {
+  const products: ScrapedProduct[] = [];
+  
+  // WooCommerce product patterns
+  const productMatches = html.matchAll(
+    /<li[^>]*class="[^"]*product[^"]*"[^>]*>([\s\S]*?)<\/li>/gi
+  );
+
+  for (const match of productMatches) {
+    const productHtml = match[1];
+    
+    const urlMatch = productHtml.match(/href="([^"]+)"/);
+    const titleMatch = productHtml.match(/<h2[^>]*class="[^"]*woocommerce-loop-product__title[^"]*"[^>]*>(.*?)<\/h2>/i) ||
+                       productHtml.match(/<h2[^>]*>(.*?)<\/h2>/i) ||
+                       productHtml.match(/title="([^"]+)"/);
+    const priceMatch = productHtml.match(/<span[^>]*class="[^"]*amount[^"]*"[^>]*>(.*?)<\/span>/i) ||
+                       productHtml.match(/(\d[\d\s,.]*)\s*(?:kr|SEK|:-)/i);
+    const imgMatch = productHtml.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
+    
+    const title = titleMatch ? (titleMatch[1] || '').replace(/<[^>]+>/g, '').trim() : '';
+    let adUrl = urlMatch ? urlMatch[1] : '';
+    
+    if (title && adUrl) {
+      if (!adUrl.startsWith('http')) {
+        adUrl = baseUrl.replace(/\/$/, '') + (adUrl.startsWith('/') ? adUrl : '/' + adUrl);
+      }
+      
+      let priceText = priceMatch ? priceMatch[1] || priceMatch[0] : '';
+      priceText = priceText.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+      const { text, amount } = parsePrice(priceText);
+      
+      products.push({
+        title,
+        ad_url: adUrl,
+        price_text: text || null,
+        price_amount: amount,
+        location: siteName,
+        image_url: imgMatch ? imgMatch[1] : '',
+        category: categorizeByKeywords(title),
+      });
+    }
+  }
+  
+  return products;
+}
+
+// Parse Gear4Music HTML
+function parseGear4Music(html: string, baseUrl: string): ScrapedProduct[] {
+  const products: ScrapedProduct[] = [];
+  
+  // Gear4Music product cards
+  const productMatches = html.matchAll(
+    /<div[^>]*class="[^"]*product-card[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi
+  );
+
+  for (const match of productMatches) {
+    const productHtml = match[1];
+    
+    const urlMatch = productHtml.match(/href="([^"]+)"/);
+    const titleMatch = productHtml.match(/<a[^>]*class="[^"]*product-card__title[^"]*"[^>]*>(.*?)<\/a>/i) ||
+                       productHtml.match(/title="([^"]+)"/);
+    const priceMatch = productHtml.match(/(\d[\d\s,.]*)\s*(?:kr|SEK)/i);
+    const imgMatch = productHtml.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
+    
+    const title = titleMatch ? (titleMatch[1] || '').replace(/<[^>]+>/g, '').trim() : '';
+    let adUrl = urlMatch ? urlMatch[1] : '';
+    
+    if (title && adUrl) {
+      if (!adUrl.startsWith('http')) {
+        adUrl = baseUrl.replace(/\/$/, '') + (adUrl.startsWith('/') ? adUrl : '/' + adUrl);
+      }
+      
+      const { text, amount } = priceMatch ? parsePrice(priceMatch[0]) : { text: null, amount: null };
+      products.push({
+        title,
+        ad_url: adUrl,
+        price_text: text,
+        price_amount: amount,
+        location: 'Gear4Music',
+        image_url: imgMatch ? imgMatch[1] : '',
+        category: categorizeByKeywords(title),
+      });
+    }
+  }
+  
+  return products;
+}
+
+// Parse Sefina Pantbank HTML
+function parseSefina(html: string, baseUrl: string): ScrapedProduct[] {
+  const products: ScrapedProduct[] = [];
+  
+  // Sefina product cards
+  const productMatches = html.matchAll(
+    /<div[^>]*class="[^"]*product[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi
+  );
+
+  for (const match of productMatches) {
+    const productHtml = match[1];
+    
+    const urlMatch = productHtml.match(/href="([^"]+)"/);
+    const titleMatch = productHtml.match(/<h[23][^>]*>(.*?)<\/h[23]>/i) ||
+                       productHtml.match(/class="[^"]*title[^"]*"[^>]*>(.*?)</i);
+    const priceMatch = productHtml.match(/(\d[\d\s,.]*)\s*(?:kr|SEK|:-)/i);
+    const imgMatch = productHtml.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
+    
+    const title = titleMatch ? (titleMatch[1] || '').replace(/<[^>]+>/g, '').trim() : '';
+    let adUrl = urlMatch ? urlMatch[1] : '';
+    
+    if (title && adUrl) {
+      if (!adUrl.startsWith('http')) {
+        adUrl = baseUrl.replace(/\/$/, '') + (adUrl.startsWith('/') ? adUrl : '/' + adUrl);
+      }
+      
+      const { text, amount } = priceMatch ? parsePrice(priceMatch[0]) : { text: null, amount: null };
+      products.push({
+        title,
+        ad_url: adUrl,
+        price_text: text,
+        price_amount: amount,
+        location: 'Sefina Pantbank',
+        image_url: imgMatch ? imgMatch[1] : '',
+        category: categorizeByKeywords(title),
+      });
+    }
+  }
+  
+  return products;
+}
+
+// Generic markdown/HTML parser fallback
+function parseGeneric(html: string, markdown: string, baseUrl: string, siteName: string): ScrapedProduct[] {
+  const products: ScrapedProduct[] = [];
+  const seenUrls = new Set<string>();
+  
+  // Try to find product links in markdown
+  const linkMatches = markdown.matchAll(/\[([^\]]+)\]\(([^)]+)\)/g);
+  for (const match of linkMatches) {
+    const title = match[1].trim();
+    let adUrl = match[2];
+    
+    // Skip navigation/menu links
+    if (title.length < 5 || title.toLowerCase().includes('menu') || 
+        title.toLowerCase().includes('cart') || title.toLowerCase().includes('login')) {
+      continue;
+    }
+    
+    if (!adUrl.startsWith('http')) {
+      adUrl = baseUrl.replace(/\/$/, '') + (adUrl.startsWith('/') ? adUrl : '/' + adUrl);
+    }
+    
+    if (seenUrls.has(adUrl)) continue;
+    seenUrls.add(adUrl);
+    
+    // Try to find price near title in markdown
+    const titleIndex = markdown.indexOf(title);
+    const nearbyText = markdown.substring(titleIndex, titleIndex + 200);
+    const priceMatch = nearbyText.match(/(\d[\d\s,.]*)\s*(?:kr|SEK|:-)/i);
+    const { text, amount } = priceMatch ? parsePrice(priceMatch[0]) : { text: null, amount: null };
+    
+    products.push({
+      title,
+      ad_url: adUrl,
+      price_text: text,
+      price_amount: amount,
+      location: siteName,
+      image_url: '',
+      category: categorizeByKeywords(title),
+    });
+  }
+  
+  // Also try HTML patterns
+  const htmlProductPatterns = [
+    /<div[^>]*class="[^"]*product[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+    /<article[^>]*>([\s\S]*?)<\/article>/gi,
+    /<li[^>]*class="[^"]*product[^"]*"[^>]*>([\s\S]*?)<\/li>/gi,
+  ];
+  
+  for (const pattern of htmlProductPatterns) {
+    const matches = html.matchAll(pattern);
+    for (const match of matches) {
+      const productHtml = match[1];
+      
+      const urlMatch = productHtml.match(/href="([^"]+)"/);
+      const titleMatch = productHtml.match(/<h[234][^>]*>(.*?)<\/h[234]>/i);
+      const priceMatch = productHtml.match(/(\d[\d\s,.]*)\s*(?:kr|SEK|:-)/i);
+      const imgMatch = productHtml.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
+      
+      const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : '';
+      let adUrl = urlMatch ? urlMatch[1] : '';
+      
+      if (title && adUrl && title.length > 5) {
+        if (!adUrl.startsWith('http')) {
+          adUrl = baseUrl.replace(/\/$/, '') + (adUrl.startsWith('/') ? adUrl : '/' + adUrl);
+        }
+        
+        if (seenUrls.has(adUrl)) continue;
+        seenUrls.add(adUrl);
+        
+        const { text, amount } = priceMatch ? parsePrice(priceMatch[0]) : { text: null, amount: null };
+        products.push({
+          title,
+          ad_url: adUrl,
+          price_text: text,
+          price_amount: amount,
+          location: siteName,
+          image_url: imgMatch ? imgMatch[1] : '',
+          category: categorizeByKeywords(title),
+        });
+      }
+    }
+  }
+  
+  return products;
+}
+
+// Main scrape function that handles all sources
+async function scrapeSource(
+  firecrawlApiKey: string, 
+  scrapeUrl: string, 
+  baseUrl: string, 
+  sourceName: string
+): Promise<ScrapedProduct[]> {
+  console.log(`Starting scrape for ${sourceName} from ${scrapeUrl}...`);
+  
+  // Scrape the listing page
+  const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${firecrawlApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      url: scrapeUrl,
+      formats: ['html', 'markdown'],
+      waitFor: 3000,
+    }),
+  });
+
+  if (!scrapeResponse.ok) {
+    const error = await scrapeResponse.text();
+    console.error(`Scrape failed for ${sourceName}:`, error);
+    throw new Error(`Scrape failed: ${error}`);
+  }
+
+  const scrapeData = await scrapeResponse.json();
+  const html = scrapeData.data?.html || scrapeData.html || '';
+  const markdown = scrapeData.data?.markdown || scrapeData.markdown || '';
+  
+  console.log(`Got HTML (${html.length} chars) and markdown (${markdown.length} chars) for ${sourceName}`);
+  
+  // Determine parser based on domain
+  const domain = new URL(scrapeUrl).hostname.toLowerCase();
+  let products: ScrapedProduct[] = [];
+  
+  if (domain.includes('musikborsen')) {
+    products = parseMusikborsen(html, baseUrl);
+  } else if (domain.includes('blocket')) {
+    products = parseBlocket(html, baseUrl);
+  } else if (domain.includes('dlxmusic')) {
+    products = parseDLXMusic(html, baseUrl);
+  } else if (domain.includes('gear4music')) {
+    products = parseGear4Music(html, baseUrl);
+  } else if (domain.includes('sefina')) {
+    products = parseSefina(html, baseUrl);
+  } else if (domain.includes('jam.se') || domain.includes('slagverket') || domain.includes('uppsalamusikverkstad')) {
+    products = parseWooCommerce(html, baseUrl, sourceName);
+  } else {
+    // Generic fallback parser
+    console.log(`Using generic parser for ${sourceName}`);
+    products = parseGeneric(html, markdown, baseUrl, sourceName);
+  }
+  
+  // If we got very few products, try generic parser as well
+  if (products.length < 5) {
+    console.log(`Only found ${products.length} products with specific parser, trying generic...`);
+    const genericProducts = parseGeneric(html, markdown, baseUrl, sourceName);
+    
+    // Merge, avoiding duplicates
+    const existingUrls = new Set(products.map(p => p.ad_url));
+    for (const p of genericProducts) {
+      if (!existingUrls.has(p.ad_url)) {
+        products.push(p);
+      }
+    }
+  }
+  
+  // Deduplicate by URL
+  const uniqueProducts = Array.from(
+    new Map(products.map(p => [p.ad_url, p])).values()
+  );
+  
+  console.log(`Found ${uniqueProducts.length} unique products for ${sourceName}`);
+  return uniqueProducts;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
+
+    if (!firecrawlApiKey) {
+      throw new Error('FIRECRAWL_API_KEY not configured');
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const body = await req.json().catch(() => ({}));
+    const sourceId = body.source_id;
+
+    if (!sourceId) {
+      throw new Error('source_id is required');
+    }
+
+    // Get source details from database
+    const { data: source, error: sourceError } = await supabase
+      .from('scraping_sources')
+      .select('id, name, scrape_url, base_url')
+      .eq('id', sourceId)
+      .single();
+
+    if (sourceError || !source) {
+      throw new Error(`Source not found: ${sourceId}`);
+    }
+
+    if (!source.scrape_url) {
+      throw new Error(`No scrape_url configured for source: ${source.name}`);
+    }
+
+    console.log(`Scraping source: ${source.name} (${source.id})`);
+    console.log(`URL: ${source.scrape_url}`);
+    console.log(`Base URL: ${source.base_url}`);
+
+    // Get category mappings for this source
+    const { data: mappings } = await supabase
+      .from('category_mappings')
+      .select('external_category, internal_category')
+      .eq('source_id', sourceId);
+
+    const categoryMap = new Map(
+      (mappings || []).map(m => [m.external_category.toLowerCase(), m.internal_category])
+    );
+
+    // Scrape products using the configured URL
+    const products = await scrapeSource(
+      firecrawlApiKey, 
+      source.scrape_url, 
+      source.base_url || new URL(source.scrape_url).origin,
+      source.name
+    );
+
+    // Prepare ads for upsert
+    const now = new Date().toISOString();
+    const adsToUpsert = products.map(product => ({
+      ad_url: product.ad_url,
+      ad_path: new URL(product.ad_url).pathname,
+      title: product.title,
+      price_text: product.price_text,
+      price_amount: product.price_amount,
+      location: product.location,
+      image_url: product.image_url,
+      category: categoryMap.get(product.category.toLowerCase()) || product.category,
+      date: now.split('T')[0],
+      is_active: true,
+      last_seen_at: now,
+      source_id: sourceId,
+      source_name: source.name,
+    }));
+
+    console.log(`Upserting ${adsToUpsert.length} ads for ${source.name}...`);
+
+    // Upsert in batches
+    const batchSize = 100;
+    let upsertedCount = 0;
+    let newCount = 0;
+
+    for (let i = 0; i < adsToUpsert.length; i += batchSize) {
+      const batch = adsToUpsert.slice(i, i + batchSize);
+      
+      // Check which URLs already exist
+      const urls = batch.map(a => a.ad_url);
+      const { data: existing } = await supabase
+        .from('ad_listings_cache')
+        .select('ad_url')
+        .in('ad_url', urls);
+      
+      const existingUrls = new Set((existing || []).map(e => e.ad_url));
+      const newInBatch = batch.filter(a => !existingUrls.has(a.ad_url)).length;
+      newCount += newInBatch;
+      
+      const { error: upsertError } = await supabase
+        .from('ad_listings_cache')
+        .upsert(batch, { 
+          onConflict: 'ad_url',
+          ignoreDuplicates: false 
+        });
+
+      if (upsertError) {
+        console.error(`Upsert error for batch ${i}:`, upsertError);
+      } else {
+        upsertedCount += batch.length;
+      }
+    }
+
+    // Mark ads not seen in this scrape as inactive
+    const scrapedUrls = products.map(p => p.ad_url);
+    if (scrapedUrls.length > 0) {
+      const { error: deactivateError } = await supabase
+        .from('ad_listings_cache')
+        .update({ is_active: false })
+        .eq('source_id', sourceId)
+        .eq('is_active', true)
+        .not('ad_url', 'in', `(${scrapedUrls.map(u => `"${u}"`).join(',')})`);
+
+      if (deactivateError) {
+        console.error('Error deactivating old ads:', deactivateError);
+      }
+    }
+
+    console.log(`Scrape complete for ${source.name}: ${upsertedCount} ads upserted, ${newCount} new`);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        source_name: source.name,
+        ads_found: products.length,
+        ads_new: newCount,
+        ads_updated: upsertedCount - newCount,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('Scrape source error:', error);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: error instanceof Error ? error.message : String(error) 
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});
