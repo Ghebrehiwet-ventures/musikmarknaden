@@ -638,19 +638,21 @@ function extractImages(html: string, sourceType: string): string[] {
           images.push(url);
         }
       }
-    }
-    
-    // Fallback to old method if no images found
-    if (images.length === 0) {
-      console.log('Gearloop: No images found in article, using fallback');
-      const glRegex = /https:\/\/assets\.gearloop\.se\/files\/\d+\.(?:jpg|jpeg|png|gif|webp)/gi;
-      let match;
-      while ((match = glRegex.exec(html)) !== null) {
-        const url = match[0];
-        if (!images.includes(url)) {
+      
+      // 3. Check for background-image in style attributes within article
+      const bgImageRegex = /style="[^"]*background-image:\s*url\(['"]?([^'")\s]+)['"]?\)/gi;
+      while ((match = bgImageRegex.exec(articleHtml)) !== null) {
+        const url = match[1];
+        if (url.includes('assets.gearloop.se') && !images.includes(url)) {
           images.push(url);
         }
       }
+    }
+    
+    // NO FALLBACK - if no images in article, ad has no images
+    // This prevents picking up images from "Mer från samma kategori" section
+    if (images.length === 0) {
+      console.log('Gearloop: No images found in article - ad has no images');
     }
   } else {
     // Generic image extraction
