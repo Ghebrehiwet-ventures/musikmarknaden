@@ -394,26 +394,29 @@ function parseGear4Music(html: string, baseUrl: string): ScrapedProduct[] {
     // Price: <div class="product-card-price">1 234 kr</div>
     const priceMatch = productHtml.match(/<div[^>]*class="[^"]*product-card-price[^"]*"[^>]*>([\d\s]+)\s*kr<\/div>/i);
     
-    // Image: <img ... class="product-card-image" src="...">
-    const imgMatch = productHtml.match(/<img[^>]*class="[^"]*product-card-image[^"]*"[^>]*src="([^"]+)"/i) ||
-                     productHtml.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*product-card-image[^"]*"/i);
+    // Image is inside <picture><source srcset="..."><img src="..." class="product-card-image"></picture>
+    // Try to get the 215px version from srcset first (better quality)
+    let imageUrl = '';
+    
+    // Look for srcset with 215w version (higher quality)
+    const srcsetMatch = productHtml.match(/srcset="[^"]*?(https:\/\/r2\.gear4music\.com\/media\/[^"\s]+\/215\/preview\.jpg)/i);
+    if (srcsetMatch) {
+      imageUrl = srcsetMatch[1];
+    }
+    
+    // Fallback to img src
+    if (!imageUrl) {
+      const imgMatch = productHtml.match(/<img[^>]*src="(https:\/\/r2\.gear4music\.com[^"]+)"/i);
+      if (imgMatch) {
+        imageUrl = imgMatch[1];
+      }
+    }
     
     const title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
     
     if (title && adUrl) {
       const priceText = priceMatch ? priceMatch[1].trim() + ' kr' : null;
       const priceAmount = priceMatch ? parseInt(priceMatch[1].replace(/\s/g, ''), 10) : null;
-      
-      // Get the best image from srcset or src
-      let imageUrl = '';
-      if (imgMatch) {
-        imageUrl = imgMatch[1];
-      }
-      // Also try to get higher res from srcset if available
-      const srcsetMatch = productHtml.match(/srcset="[^"]*?(https:\/\/r2\.gear4music\.com\/media\/[^"]+\/215\/preview\.jpg)/i);
-      if (srcsetMatch) {
-        imageUrl = srcsetMatch[1];
-      }
       
       products.push({
         title,
