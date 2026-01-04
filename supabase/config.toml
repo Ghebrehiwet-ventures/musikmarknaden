@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.batch-categorize]
 verify_jwt = false
+
+[functions.scrape-source]
+verify_jwt = false
