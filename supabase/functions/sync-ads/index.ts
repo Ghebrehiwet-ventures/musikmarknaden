@@ -669,11 +669,11 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
   // Step 5: Run cleanup categorization (process 20 existing "other" ads per sync)
   const cleanupResult = await runCleanupCategorization(supabase, supabaseUrl, 20);
 
-  // Step 6: Preload ad details for new ads (up to 15 per sync to avoid timeouts)
-  const preloadResult = await preloadAdDetails(supabase, supabaseUrl, newlyInsertedUrls, 15);
+  // Step 6: Preload ad details for new ads (up to 40 per sync to build cache faster)
+  const preloadResult = await preloadAdDetails(supabase, supabaseUrl, newlyInsertedUrls, 40);
 
   // Step 7: Backfill images for any ads that are still missing them
-  const backfillResult = await backfillMissingImages(supabase, supabaseUrl, 30);
+  const backfillResult = await backfillMissingImages(supabase, supabaseUrl, 50);
 
   const duration = Math.round((Date.now() - startTime) / 1000);
   
