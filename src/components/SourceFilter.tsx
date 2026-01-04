@@ -20,7 +20,7 @@ export function SourceFilter({ value, onChange, sources, sourceCounts, totalCoun
       value={value || "all"} 
       onValueChange={(v) => onChange(v === "all" ? null : v)}
     >
-      <SelectTrigger className="w-[180px] h-10 text-sm">
+      <SelectTrigger className="w-[140px] sm:w-[180px] h-9 sm:h-10 text-xs sm:text-sm">
         <SelectValue placeholder="Alla källor" />
       </SelectTrigger>
       <SelectContent>

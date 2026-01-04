@@ -144,12 +144,14 @@ export default function Index() {
       />
       
       <main className="max-w-6xl mx-auto px-4 lg:px-6 py-3 text-left">
-        <div className="flex items-center justify-between mb-2 h-10">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
           <span className="text-sm text-muted-foreground">{totalAds} annonser{searchQuery && ` för "${searchQuery}"`}</span>
           <div className="flex items-center gap-2">
             <SourceFilter value={selectedSource} onChange={handleSourceChange} sources={availableSources} sourceCounts={sourceCounts} totalCount={allAds.length} />
             <SortSelect value={sortOption} onChange={setSortOption} />
-            <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+            <div className="hidden sm:block">
+              <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+            </div>
           </div>
         </div>
 
