@@ -194,8 +194,19 @@ serve(async (req) => {
     }
 
     // Also update the listing with image and description for faster loading
-    const firstImage = adDetails.images && adDetails.images.length > 0 ? adDetails.images[0] : null;
+    // BUT: only update image if it passes the sanitizer (not a badge/placeholder)
+    let firstImage = adDetails.images && adDetails.images.length > 0 ? adDetails.images[0] : null;
     const shortDescription = adDetails.description?.substring(0, 500) || null;
+    
+    // For DLX: double-check the first image isn't a placeholder before updating listing
+    if (firstImage && sourceType === 'dlxmusic') {
+      const lowUrl = firstImage.toLowerCase();
+      if (lowUrl.includes('sv_dlx_music_') || lowUrl.includes('404') || 
+          lowUrl.includes('logo') || lowUrl.includes('banner')) {
+        console.log('DLX: Skipping placeholder image for listing update:', firstImage);
+        firstImage = null;
+      }
+    }
     
     if (firstImage || shortDescription) {
       const updateData: Record<string, string | null> = {};
@@ -591,6 +602,30 @@ function getBaseImageUrl(url: string): string {
   return url.replace(/-\d+x\d+(?=\.(jpg|jpeg|png|gif|webp))/i, '');
 }
 
+// DLX placeholder/badge images that should NOT be used as product images
+function isDlxPlaceholderImage(url: string): boolean {
+  if (!url) return true;
+  const lowUrl = url.toLowerCase();
+  return (
+    lowUrl.includes('sv_dlx_music_used') ||
+    lowUrl.includes('sv_dlx_music_topseller') ||
+    lowUrl.includes('sv_dlx_music_campaign') ||
+    lowUrl.includes('sv_dlx_music_news') ||
+    lowUrl.includes('sv_dlx_music_download') ||
+    lowUrl.includes('sv_dlx_music_demo') ||
+    lowUrl.includes('sv_dlx_music_bstock') ||
+    lowUrl.includes('404') ||
+    lowUrl.includes('logo') ||
+    lowUrl.includes('icon') ||
+    lowUrl.includes('avatar') ||
+    lowUrl.includes('banner') ||
+    lowUrl.includes('i.ytimg.com') ||
+    lowUrl.includes('youtube.com') ||
+    lowUrl.includes('facebook.com') ||
+    lowUrl.includes('twitter.com')
+  );
+}
+
 function extractImages(html: string, sourceType: string): string[] {
   const images: string[] = [];
   
@@ -654,6 +689,48 @@ function extractImages(html: string, sourceType: string): string[] {
     if (images.length === 0) {
       console.log('Gearloop: No images found in article - ad has no images');
     }
+  } else if (sourceType === 'dlxmusic') {
+    // DLX Music: Extract ONLY real product images from /storage/ path
+    // Avoid badges, banners, related products
+    
+    // 1. Look for main product gallery images first (most reliable)
+    const galleryRegex = /https?:\/\/www\.dlxmusic\.se\/storage\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
+    let match;
+    const seenUrls = new Set<string>();
+    
+    while ((match = galleryRegex.exec(html)) !== null) {
+      const url = match[0];
+      
+      // Skip if already seen or is a placeholder
+      if (seenUrls.has(url)) continue;
+      if (isDlxPlaceholderImage(url)) {
+        console.log('DLX details: Filtered placeholder image:', url);
+        continue;
+      }
+      
+      seenUrls.add(url);
+      images.push(url);
+    }
+    
+    // 2. Also check for images in DLX CDN (if any)
+    const cdnRegex = /https?:\/\/cdn\.dlxmusic\.se\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
+    while ((match = cdnRegex.exec(html)) !== null) {
+      const url = match[0];
+      if (seenUrls.has(url)) continue;
+      if (isDlxPlaceholderImage(url)) continue;
+      seenUrls.add(url);
+      images.push(url);
+    }
+    
+    // Cap at max 12 images and log result
+    const cappedImages = images.slice(0, 12);
+    console.log(`DLX: Found ${images.length} images, returning ${cappedImages.length}`);
+    
+    if (cappedImages.length === 0) {
+      console.log('DLX: No valid product images found - ad has no images');
+    }
+    
+    return cappedImages;
   } else {
     // Generic image extraction
     const genericRegex = /https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
@@ -676,6 +753,14 @@ function extractContactInfo(
   sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'unknown'
 ): { email?: string; phone?: string } {
   const contactInfo: { email?: string; phone?: string } = {};
+  
+  // For DLX Music: They are a store, contact info is fixed (no per-product seller)
+  // Don't extract phone numbers from random text - can pick up product codes
+  if (sourceType === 'dlxmusic') {
+    // DLX store contact - could set a fixed email if needed
+    console.log('DLX: Skipping contact extraction (store, not private seller)');
+    return contactInfo;
+  }
   
   // For Gearloop: They do NOT show phone numbers publicly (requires login to message)
   // So we should NOT extract phone numbers from random text that might match patterns
