@@ -253,36 +253,40 @@ function parseBlocket(html: string, baseUrl: string): ScrapedProduct[] {
 function parseDLXMusic(html: string, baseUrl: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
   
-  // DLX uses product cards with class patterns
+  // DLX uses <li class="product-list__item"> with data-item-id
   const productMatches = html.matchAll(
-    /<div[^>]*class="[^"]*product[^"]*card[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/gi
+    /<li[^>]*class="[^"]*product-list__item[^"]*"[^>]*data-item-id="(\d+)"[^>]*>([\s\S]*?)<\/li>/gi
   );
 
   for (const match of productMatches) {
-    const productHtml = match[1];
+    const productHtml = match[2];
     
-    const urlMatch = productHtml.match(/href="([^"]+)"/);
-    const titleMatch = productHtml.match(/<h[23][^>]*>(.*?)<\/h[23]>/i) || 
-                       productHtml.match(/class="[^"]*title[^"]*"[^>]*>(.*?)</i);
-    const priceMatch = productHtml.match(/(\d[\d\s]*)\s*(?:kr|SEK)/i);
-    const imgMatch = productHtml.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
+    // URL: <a href="https://www.dlxmusic.se/produkter/..." itemprop="url">
+    const urlMatch = productHtml.match(/href="(https:\/\/www\.dlxmusic\.se\/produkter\/[^"]+)"/);
     
-    const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : '';
-    let adUrl = urlMatch ? urlMatch[1] : '';
+    // Titel: <h3 itemprop="name" class="product__name">Produktnamn</h3>
+    const titleMatch = productHtml.match(/<h3[^>]*class="[^"]*product__name[^"]*"[^>]*>([^<]+)<\/h3>/i);
+    
+    // Pris: <div itemprop="price" content="995.00" class="price">
+    const priceMatch = productHtml.match(/itemprop="price"\s+content="([\d.]+)"/);
+    
+    // Produktbild: <img src="..." class="product__image">
+    const imgMatch = productHtml.match(/<img[^>]*class="[^"]*product__image[^"]*"[^>]*src="([^"]+)"/i) ||
+                     productHtml.match(/<img[^>]*src="([^"]+)"[^>]*class="[^"]*product__image[^"]*"/i);
+    
+    const title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
+    const adUrl = urlMatch ? urlMatch[1] : '';
+    const priceAmount = priceMatch ? parseFloat(priceMatch[1]) : null;
+    const imageUrl = imgMatch ? imgMatch[1] : '';
     
     if (title && adUrl) {
-      if (!adUrl.startsWith('http')) {
-        adUrl = baseUrl.replace(/\/$/, '') + (adUrl.startsWith('/') ? adUrl : '/' + adUrl);
-      }
-      
-      const { text, amount } = priceMatch ? parsePrice(priceMatch[0]) : { text: null, amount: null };
       products.push({
         title,
         ad_url: adUrl,
-        price_text: text,
-        price_amount: amount,
-        location: 'DLX Music',
-        image_url: imgMatch ? imgMatch[1] : '',
+        price_text: priceAmount ? `${Math.round(priceAmount)} kr` : null,
+        price_amount: priceAmount,
+        location: 'Stockholm',
+        image_url: imageUrl,
         category: categorizeByKeywords(title),
       });
     }
@@ -508,16 +512,14 @@ function parseGeneric(html: string, markdown: string, baseUrl: string, siteName:
   return products;
 }
 
-// Main scrape function that handles all sources
-async function scrapeSource(
-  firecrawlApiKey: string, 
-  scrapeUrl: string, 
-  baseUrl: string, 
-  sourceName: string
-): Promise<ScrapedProduct[]> {
-  console.log(`Starting scrape for ${sourceName} from ${scrapeUrl}...`);
-  
-  // Scrape the listing page
+// Scrape a single page
+async function scrapeSinglePage(
+  firecrawlApiKey: string,
+  pageUrl: string,
+  baseUrl: string,
+  sourceName: string,
+  domain: string
+): Promise<{ products: ScrapedProduct[]; html: string; markdown: string }> {
   const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
     method: 'POST',
     headers: {
@@ -525,7 +527,7 @@ async function scrapeSource(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      url: scrapeUrl,
+      url: pageUrl,
       formats: ['html', 'markdown'],
       waitFor: 3000,
     }),
@@ -541,10 +543,6 @@ async function scrapeSource(
   const html = scrapeData.data?.html || scrapeData.html || '';
   const markdown = scrapeData.data?.markdown || scrapeData.markdown || '';
   
-  console.log(`Got HTML (${html.length} chars) and markdown (${markdown.length} chars) for ${sourceName}`);
-  
-  // Determine parser based on domain
-  const domain = new URL(scrapeUrl).hostname.toLowerCase();
   let products: ScrapedProduct[] = [];
   
   if (domain.includes('musikborsen')) {
@@ -560,28 +558,83 @@ async function scrapeSource(
   } else if (domain.includes('jam.se') || domain.includes('slagverket') || domain.includes('uppsalamusikverkstad')) {
     products = parseWooCommerce(html, baseUrl, sourceName);
   } else {
-    // Generic fallback parser
     console.log(`Using generic parser for ${sourceName}`);
     products = parseGeneric(html, markdown, baseUrl, sourceName);
   }
   
-  // If we got very few products, try generic parser as well
-  if (products.length < 5) {
-    console.log(`Only found ${products.length} products with specific parser, trying generic...`);
-    const genericProducts = parseGeneric(html, markdown, baseUrl, sourceName);
+  return { products, html, markdown };
+}
+
+// Main scrape function that handles all sources with pagination support
+async function scrapeSource(
+  firecrawlApiKey: string, 
+  scrapeUrl: string, 
+  baseUrl: string, 
+  sourceName: string
+): Promise<ScrapedProduct[]> {
+  console.log(`Starting scrape for ${sourceName} from ${scrapeUrl}...`);
+  
+  const domain = new URL(scrapeUrl).hostname.toLowerCase();
+  const allProducts: ScrapedProduct[] = [];
+  
+  // DLX Music needs pagination
+  if (domain.includes('dlxmusic')) {
+    const maxPages = 10;
+    let page = 1;
+    let pageUrl = scrapeUrl;
     
-    // Merge, avoiding duplicates
-    const existingUrls = new Set(products.map(p => p.ad_url));
-    for (const p of genericProducts) {
-      if (!existingUrls.has(p.ad_url)) {
-        products.push(p);
+    while (page <= maxPages) {
+      console.log(`Fetching DLX page ${page}: ${pageUrl}`);
+      
+      const { products, html } = await scrapeSinglePage(
+        firecrawlApiKey, pageUrl, baseUrl, sourceName, domain
+      );
+      
+      console.log(`Got ${products.length} products from page ${page}`);
+      allProducts.push(...products);
+      
+      // Check if there's a next page - look for page=N+1 in pagination links
+      const nextPage = page + 1;
+      const hasNextPage = html.includes(`page=${nextPage}`) || 
+                          html.includes(`?page=${nextPage}`) ||
+                          html.includes(`&amp;page=${nextPage}`);
+      
+      if (hasNextPage && products.length > 0) {
+        const url = new URL(scrapeUrl);
+        url.searchParams.set('page', String(nextPage));
+        pageUrl = url.toString();
+        page++;
+      } else {
+        console.log(`No more pages found after page ${page}`);
+        break;
+      }
+    }
+    
+    console.log(`Total DLX products across ${page} pages: ${allProducts.length}`);
+  } else {
+    // Single page scrape for other sources
+    const { products, html, markdown } = await scrapeSinglePage(
+      firecrawlApiKey, scrapeUrl, baseUrl, sourceName, domain
+    );
+    allProducts.push(...products);
+    
+    // If we got very few products, try generic parser as well
+    if (allProducts.length < 5) {
+      console.log(`Only found ${allProducts.length} products with specific parser, trying generic...`);
+      const genericProducts = parseGeneric(html, markdown, baseUrl, sourceName);
+      
+      const existingUrls = new Set(allProducts.map(p => p.ad_url));
+      for (const p of genericProducts) {
+        if (!existingUrls.has(p.ad_url)) {
+          allProducts.push(p);
+        }
       }
     }
   }
   
   // Deduplicate by URL
   const uniqueProducts = Array.from(
-    new Map(products.map(p => [p.ad_url, p])).values()
+    new Map(allProducts.map(p => [p.ad_url, p])).values()
   );
   
   console.log(`Found ${uniqueProducts.length} unique products for ${sourceName}`);
