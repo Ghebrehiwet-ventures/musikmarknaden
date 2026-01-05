@@ -7,11 +7,12 @@ const corsHeaders = {
 };
 
 // Detect source from URL
-function getSourceType(url: string): 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'unknown' {
+function getSourceType(url: string): 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'unknown' {
   if (url.includes('musikborsen.se')) return 'musikborsen';
   if (url.includes('gearloop.se')) return 'gearloop';
   if (url.includes('dlxmusic.se')) return 'dlxmusic';
   if (url.includes('gear4music.se') || url.includes('gear4music.com')) return 'gear4music';
+  if (url.includes('blocket.se')) return 'blocket';
   return 'unknown';
 }
 
@@ -245,13 +246,15 @@ function parseAdDetails(
   markdown: string, 
   html: string, 
   metadata: Record<string, unknown>,
-  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'unknown'
+  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'unknown'
 ) {
   const title = (metadata.title as string)?.split(' - ')[0]?.split(' | ')[0] || extractTitle(markdown) || 'Okänd titel';
   
   // Extract description with source-specific cleaning
   let description: string;
-  if (sourceType === 'gearloop') {
+  if (sourceType === 'blocket') {
+    description = extractBlocketDescription(markdown);
+  } else if (sourceType === 'gearloop') {
     // For Gearloop, extract from HTML to get clean description
     description = extractGearloopDescriptionFromHtml(html);
   } else if (sourceType === 'musikborsen') {
@@ -268,9 +271,14 @@ function parseAdDetails(
   const priceAmount = priceMatch ? parseInt(priceMatch[1].replace(/\s/g, ''), 10) : null;
   
   // Extract location with source-specific patterns
-  const location = sourceType === 'musikborsen'
-    ? extractMusikborsenLocation(markdown)
-    : extractLocation(markdown);
+  let location: string;
+  if (sourceType === 'musikborsen') {
+    location = extractMusikborsenLocation(markdown);
+  } else if (sourceType === 'blocket') {
+    location = extractBlocketLocation(markdown);
+  } else {
+    location = extractLocation(markdown);
+  }
   
   // Extract images with source-specific patterns
   const images = extractImages(markdown, html, sourceType);
@@ -664,6 +672,229 @@ function extractMusikborsenLocation(markdown: string): string {
   return extractLocation(markdown);
 }
 
+// Blocket-specific description extraction
+function extractBlocketDescription(markdown: string): string {
+  const lines = markdown.split('\n');
+  const contentLines: string[] = [];
+  
+  // Blocket-specific patterns to skip
+  const skipPatterns = [
+    /^Gå till annonsen$/i,
+    /^Torget\//i,                              // Breadcrumb navigation
+    /^Pil (vänster|höger)/i,
+    /^\(\d+\/\d+\)$/,                          // Image counter "(1/6)"
+    /^Lägg till i favoriter/i,
+    /^Lastbil i rörelse/i,                     // Shipping icon text
+    /^Kan skickas$/i,
+    /^Köp nu/i,
+    /^Skicka (meddelande|prisförslag)/i,
+    /^Be säljaren att skicka/i,
+    /^Frakt från/i,
+    /^köpskydd/i,
+    /^Läs mer$/i,
+    /^Dela annons$/i,
+    /^Anmäl annons$/i,
+    /^Senast ändrad:/i,
+    /^Annons-ID:/i,
+    /^Villkor\s/i,
+    /^Information och inspiration/i,
+    /^Om Blocket/i,
+    /^Kontakta oss/i,
+    /^Blocket är en del av Vend/i,
+    /upphovsrättslagen/i,
+    /^© \d+/,
+    /^En del av Vend$/i,
+    /^(Instagram|YouTube|Facebook)-logotyp/i,
+    /^HouseBlocketBlocket/i,
+    /^(Bell|Circle with)/i,
+    /^Ny annons$/i,
+    /^Speech bubbles/i,
+    /^Logga in$/i,
+    /^Meddelanden$/i,
+    /^Notiser$/i,
+    /^Miniatyrbild$/i,
+    /^!\[/,                                     // Markdown images
+    /^Karta\d+/i,                              // "Karta19335 Sigtuna"
+    /^Du måste vara inloggad/i,
+    /^Visa hela beskrivningen/i,
+    /^Plustecken/i,
+    /^Kryss$/i,
+    /^Påminn mig senare/i,
+    /^Blocket har fått ett lyft/i,
+    /^Säljare$/i,                              // Seller section header
+    /^Säljaren har/i,                          // Seller info
+    /^Privat$/i,                               // Seller type
+    /^Omdömen$/i,
+    /^Visa omdömen$/i,
+    /^Svarsfrekvens:/i,
+    /^Svarstid:/i,
+    /^Medlem sedan/i,
+    /^Verifierad med BankID$/i,
+    /^Checklist checkmark circle filled/i,
+    /^Person silhouette/i,
+    /^Alla annonser från säljaren$/i,
+    /^Kontakt$/i,
+    /^Chatta$/i,
+    /^Ring säljaren/i,
+    /^Blocket$/i,
+    /^Jobb$/i,
+    /^Bostad$/i,
+    /^Fordon$/i,
+    /^Köp & sälj$/i,
+    /^Person$/i,
+    /^Begagnat$/i,
+    /^Nytt$/i,
+    /^Laddar$/i,
+    /^Bokmärknad$/i,
+    /^Annonsvy$/i,
+    /^Listaikon$/i,
+    /^Bild \d+ av \d+$/i,
+    /^Galleribildsikon$/i,
+    /^Chevron/i,
+    /^Pil höger$/i,
+  ];
+  
+  let foundDescription = false;
+  let skipRest = false;
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    
+    // Stop at "Mer som det här" - everything after is related ads
+    if (/^Mer som det här/i.test(trimmed)) {
+      skipRest = true;
+      break;
+    }
+    
+    // Stop at "Säljarens övriga annonser" section
+    if (/säljarens övriga annonser/i.test(trimmed)) {
+      skipRest = true;
+      break;
+    }
+    
+    // Stop at "Tips på nya annonser" section
+    if (/tips på nya annonser/i.test(trimmed)) {
+      skipRest = true;
+      break;
+    }
+    
+    if (skipRest) continue;
+    
+    // Skip prices (shown separately)
+    if (/^\d[\d\s.,]*\s*kr$/i.test(trimmed)) continue;
+    
+    // Skip if matches any skip pattern
+    if (skipPatterns.some(p => p.test(trimmed))) continue;
+    
+    // Skip headers
+    if (trimmed.startsWith('#')) continue;
+    
+    // Skip very short lines that are likely UI elements
+    if (trimmed.length < 3) continue;
+    
+    // Skip location lines like "Sigtuna, Uppsala län"
+    if (/^[A-ZÅÄÖ][a-zåäö]+,\s*[A-ZÅÄÖ][a-zåäö]+\s+län$/i.test(trimmed)) continue;
+    
+    contentLines.push(trimmed);
+    foundDescription = true;
+  }
+  
+  let desc = contentLines.join('\n').trim();
+  
+  // Clean up markdown artifacts
+  desc = desc.replace(/!\[\]\([^)]+\)/g, '');
+  desc = desc.replace(/!\[[^\]]*\]\([^)]+\)/g, '');
+  desc = desc.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  desc = desc.replace(/\*\*/g, '');
+  
+  // Remove duplicate consecutive lines
+  const uniqueLines = desc.split('\n')
+    .filter((line, i, arr) => i === 0 || line !== arr[i - 1])
+    .filter(line => line.trim().length > 0);
+  desc = uniqueLines.join('\n');
+  
+  // Cap at 2000 chars
+  if (desc.length > 2000) {
+    desc = desc.substring(0, 2000) + '...';
+  }
+  
+  if (!desc || desc.length < 5) {
+    return 'Ingen beskrivning tillgänglig';
+  }
+  
+  console.log('Blocket: Extracted description, length:', desc.length);
+  return desc;
+}
+
+// Blocket-specific location extraction
+function extractBlocketLocation(markdown: string): string {
+  // Blocket has location in format: "Sigtuna, Uppsala län"
+  // or in breadcrumb-like format after city name
+  
+  // Pattern 1: City, County format
+  const cityCountyMatch = markdown.match(/([A-ZÅÄÖ][a-zåäö]+),\s*([A-ZÅÄÖ][a-zåäö]+\s+län)/);
+  if (cityCountyMatch) {
+    return cityCountyMatch[1]; // Return just the city
+  }
+  
+  // Pattern 2: Look for "Karta" followed by postcode and city
+  const mapMatch = markdown.match(/Karta\s*(\d{5})\s*([A-ZÅÄÖ][a-zåäö]+)/i);
+  if (mapMatch) {
+    return mapMatch[2]; // Return the city name
+  }
+  
+  // Fall back to general location extraction
+  return extractLocation(markdown);
+}
+
+// Blocket-specific image extraction
+function extractBlocketImages(markdown: string, html: string): string[] {
+  const images: string[] = [];
+  const seen = new Set<string>();
+  
+  // Pattern 1: Markdown images from Blocket CDN
+  // Format: ![alt text](https://images.blocketcdn.se/dynamic/480w/item/XXXXX/...)
+  const imgPattern = /!\[[^\]]*\]\((https:\/\/images\.blocketcdn\.se[^)]+)\)/g;
+  let match;
+  
+  while ((match = imgPattern.exec(markdown)) !== null) {
+    let url = match[1];
+    
+    // Upgrade to 1200w for better quality
+    url = url.replace(/\/\d+w\//, '/1200w/');
+    
+    // Deduplicate based on item ID and image hash
+    const idMatch = url.match(/item\/(\d+\/[^\/]+)/);
+    const key = idMatch ? idMatch[1] : url;
+    
+    if (!seen.has(key)) {
+      seen.add(key);
+      images.push(url);
+    }
+  }
+  
+  // Pattern 2: Try HTML data-src or src attributes from Blocket CDN
+  if (images.length === 0 && html) {
+    const htmlPattern = /(?:data-src|src)="(https:\/\/images\.blocketcdn\.se[^"]+)"/g;
+    while ((match = htmlPattern.exec(html)) !== null) {
+      let url = match[1];
+      url = url.replace(/\/\d+w\//, '/1200w/');
+      
+      const idMatch = url.match(/item\/(\d+\/[^\/]+)/);
+      const key = idMatch ? idMatch[1] : url;
+      
+      if (!seen.has(key)) {
+        seen.add(key);
+        images.push(url);
+      }
+    }
+  }
+  
+  console.log(`Blocket: Extracted ${images.length} images`);
+  return images;
+}
+
 // Helper to get base image URL without WordPress size suffix
 function getBaseImageUrl(url: string): string {
   // Remove WordPress size suffixes like -300x200, -768x1024, etc.
@@ -924,6 +1155,9 @@ function extractImages(markdown: string, html: string, sourceType: string): stri
     console.log(`Gear4Music: Final image count: ${finalImages.length}`);
     
     return finalImages;
+  } else if (sourceType === 'blocket') {
+    // Blocket: Use dedicated extraction function
+    return extractBlocketImages(markdown, html);
   } else {
     // Generic image extraction
     const genericRegex = /https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
@@ -943,7 +1177,7 @@ function extractImages(markdown: string, html: string, sourceType: string): stri
 function extractContactInfo(
   markdown: string, 
   html: string, 
-  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'unknown'
+  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'unknown'
 ): { email?: string; phone?: string } {
   const contactInfo: { email?: string; phone?: string } = {};
   
@@ -965,6 +1199,13 @@ function extractContactInfo(
     }
     // No phone extraction for Gearloop - they don't display it
     console.log('Gearloop: Skipping phone extraction (not publicly displayed)');
+    return contactInfo;
+  }
+  
+  // For Blocket: Contact is through the platform (messaging), not direct phone/email
+  if (sourceType === 'blocket') {
+    // Blocket sellers communicate through the platform's messaging system
+    console.log('Blocket: Skipping contact extraction (platform messaging used)');
     return contactInfo;
   }
   
