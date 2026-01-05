@@ -7,10 +7,11 @@ const corsHeaders = {
 };
 
 // Detect source from URL
-function getSourceType(url: string): 'musikborsen' | 'gearloop' | 'dlxmusic' | 'unknown' {
+function getSourceType(url: string): 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'unknown' {
   if (url.includes('musikborsen.se')) return 'musikborsen';
   if (url.includes('gearloop.se')) return 'gearloop';
   if (url.includes('dlxmusic.se')) return 'dlxmusic';
+  if (url.includes('gear4music.se') || url.includes('gear4music.com')) return 'gear4music';
   return 'unknown';
 }
 
@@ -244,7 +245,7 @@ function parseAdDetails(
   markdown: string, 
   html: string, 
   metadata: Record<string, unknown>,
-  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'unknown'
+  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'unknown'
 ) {
   const title = (metadata.title as string)?.split(' - ')[0]?.split(' | ')[0] || extractTitle(markdown) || 'Okänd titel';
   
@@ -255,6 +256,8 @@ function parseAdDetails(
     description = extractGearloopDescriptionFromHtml(html);
   } else if (sourceType === 'musikborsen') {
     description = extractMusikborsenDescription(markdown);
+  } else if (sourceType === 'gear4music') {
+    description = extractGear4MusicDescription(html);
   } else {
     description = extractGearloopDescription(markdown);
   }
@@ -506,6 +509,71 @@ function extractGearloopDescriptionFromHtml(html: string): string {
 }
 
 // Legacy markdown-based extraction (kept for non-Gearloop sources)
+// Gear4Music-specific description extraction
+function extractGear4MusicDescription(html: string): string {
+  // Look for the product description section
+  // Gear4Music has product features in list items and description in specific sections
+  
+  const descriptionParts: string[] = [];
+  
+  // 1. Try to find "Centrala funktioner" / "Key Features" section
+  const featuresMatch = html.match(/<[^>]*(?:class|id)="[^"]*(?:key-features|product-features|feature-list)[^"]*"[^>]*>([\s\S]*?)<\/(?:ul|div|section)>/i);
+  if (featuresMatch) {
+    const features = featuresMatch[1].replace(/<li[^>]*>/gi, '• ').replace(/<[^>]+>/g, '').trim();
+    if (features) descriptionParts.push(features);
+  }
+  
+  // 2. Look for product description in common patterns
+  const descPatterns = [
+    /<div[^>]*class="[^"]*product-description[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+    /<div[^>]*id="description"[^>]*>([\s\S]*?)<\/div>/i,
+    /<section[^>]*class="[^"]*description[^"]*"[^>]*>([\s\S]*?)<\/section>/i,
+  ];
+  
+  for (const pattern of descPatterns) {
+    const match = html.match(pattern);
+    if (match && match[1]) {
+      let desc = match[1]
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .trim();
+      if (desc.length > 20) {
+        descriptionParts.push(desc);
+        break;
+      }
+    }
+  }
+  
+  // 3. Extract list items that contain product features (common on Gear4Music)
+  const listItemRegex = /<li[^>]*>([^<]{10,200})<\/li>/gi;
+  let match;
+  const features: string[] = [];
+  while ((match = listItemRegex.exec(html)) !== null && features.length < 10) {
+    const text = match[1].trim();
+    // Skip navigation items
+    if (text.length < 100 && !text.includes('http') && 
+        !text.includes('Logga in') && !text.includes('Registrera') &&
+        !text.includes('Kundtjänst') && !text.includes('Cookie')) {
+      features.push('• ' + text);
+    }
+  }
+  
+  if (features.length > 0 && descriptionParts.length === 0) {
+    descriptionParts.push(features.join('\n'));
+  }
+  
+  const description = descriptionParts.join('\n\n').trim();
+  
+  if (!description || description.length < 10) {
+    return 'Ingen beskrivning tillgänglig';
+  }
+  
+  console.log('Gear4Music: Extracted description, length:', description.length);
+  return description;
+}
+
 function extractGearloopDescription(markdown: string): string {
   const lines = markdown.split('\n');
   const contentLines: string[] = [];
@@ -768,6 +836,60 @@ function extractImages(html: string, sourceType: string): string[] {
     }
     
     return images;
+  } else if (sourceType === 'gear4music') {
+    // Gear4Music: Extract from product image gallery
+    // Main images are in <picture> tags with srcset
+    // Look for the main product gallery section
+    const seenUrls = new Set<string>();
+    
+    // 1. Look for main product image in picture elements with srcset
+    // The gallery typically has images with srcset containing different sizes
+    const pictureRegex = /<picture[^>]*>[\s\S]*?<source[^>]*srcset="([^"]+)"[\s\S]*?<\/picture>/gi;
+    let match;
+    while ((match = pictureRegex.exec(html)) !== null) {
+      const srcset = match[1];
+      // Parse srcset and get the largest image
+      const urls = srcset.split(',').map(s => s.trim().split(/\s+/)[0]);
+      // Get the largest (usually last or has highest width)
+      for (const url of urls) {
+        if (!url) continue;
+        const fullUrl = url.startsWith('//') ? 'https:' + url : url;
+        
+        // Only include product images from gear4music CDN
+        if (!fullUrl.includes('gear4music.com') && !fullUrl.includes('gear4music.se')) continue;
+        // Skip icons, logos, brand images
+        if (fullUrl.includes('/brand/') || fullUrl.includes('/logo') || 
+            fullUrl.includes('/icon') || fullUrl.includes('/badge')) continue;
+        
+        if (!seenUrls.has(fullUrl)) {
+          seenUrls.add(fullUrl);
+          images.push(fullUrl);
+        }
+      }
+    }
+    
+    // 2. Fallback: Look for img tags with product images
+    if (images.length === 0) {
+      const imgRegex = /<img[^>]*src="([^"]*(?:gear4music|cachefly)[^"]*)"/gi;
+      while ((match = imgRegex.exec(html)) !== null) {
+        let url = match[1];
+        if (url.startsWith('//')) url = 'https:' + url;
+        
+        // Skip small thumbnails, icons, logos
+        if (url.includes('/brand/') || url.includes('/logo') || 
+            url.includes('/icon') || url.includes('/badge') ||
+            url.includes('trustpilot') || url.includes('/header/') ||
+            url.includes('/footer/')) continue;
+        
+        if (!seenUrls.has(url)) {
+          seenUrls.add(url);
+          images.push(url);
+        }
+      }
+    }
+    
+    console.log(`Gear4Music: Found ${images.length} product images`);
+    return images;
   } else {
     // Generic image extraction
     const genericRegex = /https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
@@ -787,7 +909,7 @@ function extractImages(html: string, sourceType: string): string[] {
 function extractContactInfo(
   markdown: string, 
   html: string, 
-  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'unknown'
+  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'unknown'
 ): { email?: string; phone?: string } {
   const contactInfo: { email?: string; phone?: string } = {};
   
