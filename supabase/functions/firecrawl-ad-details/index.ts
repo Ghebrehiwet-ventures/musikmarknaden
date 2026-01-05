@@ -281,7 +281,9 @@ function parseAdDetails(
   }
   
   // Extract images with source-specific patterns
-  const images = extractImages(markdown, html, sourceType);
+  // For Blocket, pass the ad_url from metadata to filter images by ad ID
+  const adUrl = (metadata.sourceURL as string) || '';
+  const images = extractImages(markdown, html, sourceType, adUrl);
   
   // Extract contact info - pass sourceType to avoid fabricated phone numbers
   const contactInfo = extractContactInfo(markdown, html, sourceType);
@@ -752,29 +754,29 @@ function extractBlocketDescription(markdown: string): string {
     /^Galleribildsikon$/i,
     /^Chevron/i,
     /^Pil höger$/i,
+    /^Säljes$/i,                               // Pricing labels
+    /^Bortskänkes$/i,
+    /^Du kanske också gillar/i,                // Related ads header
+    /^Visa alla$/i,
+    /^Liknande annonser$/i,
+    /^Fler annonser$/i,
   ];
   
-  let foundDescription = false;
   let skipRest = false;
   
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     
-    // Stop at "Mer som det här" - everything after is related ads
-    if (/^Mer som det här/i.test(trimmed)) {
-      skipRest = true;
-      break;
-    }
-    
-    // Stop at "Säljarens övriga annonser" section
-    if (/säljarens övriga annonser/i.test(trimmed)) {
-      skipRest = true;
-      break;
-    }
-    
-    // Stop at "Tips på nya annonser" section
-    if (/tips på nya annonser/i.test(trimmed)) {
+    // Stop at related ads sections
+    if (/^Mer som det här/i.test(trimmed) ||
+        /^Du kanske också gillar/i.test(trimmed) ||
+        /säljarens övriga annonser/i.test(trimmed) ||
+        /tips på nya annonser/i.test(trimmed) ||
+        /^Liknande annonser/i.test(trimmed) ||
+        /^Fler annonser/i.test(trimmed) ||
+        /^Visa alla$/i.test(trimmed)) {
+      console.log('Blocket: Stopping at related ads section:', trimmed);
       skipRest = true;
       break;
     }
@@ -797,7 +799,6 @@ function extractBlocketDescription(markdown: string): string {
     if (/^[A-ZÅÄÖ][a-zåäö]+,\s*[A-ZÅÄÖ][a-zåäö]+\s+län$/i.test(trimmed)) continue;
     
     contentLines.push(trimmed);
-    foundDescription = true;
   }
   
   let desc = contentLines.join('\n').trim();
@@ -849,9 +850,15 @@ function extractBlocketLocation(markdown: string): string {
 }
 
 // Blocket-specific image extraction
-function extractBlocketImages(markdown: string, html: string): string[] {
+function extractBlocketImages(markdown: string, html: string, adUrl: string): string[] {
   const images: string[] = [];
   const seen = new Set<string>();
+  
+  // Extract the ad ID from the URL (e.g., "19932942" from .../item/19932942)
+  const adIdMatch = adUrl.match(/item\/(\d+)/);
+  const adId = adIdMatch ? adIdMatch[1] : null;
+  
+  console.log(`Blocket: Extracting images for ad ID: ${adId}`);
   
   // Pattern 1: Markdown images from Blocket CDN
   // Format: ![alt text](https://images.blocketcdn.se/dynamic/480w/item/XXXXX/...)
@@ -861,12 +868,29 @@ function extractBlocketImages(markdown: string, html: string): string[] {
   while ((match = imgPattern.exec(markdown)) !== null) {
     let url = match[1];
     
-    // Upgrade to 1200w for better quality
-    url = url.replace(/\/\d+w\//, '/1200w/');
+    // Skip profile placeholder images
+    if (url.includes('profile_placeholders')) {
+      console.log('Blocket: Skipping profile placeholder:', url);
+      continue;
+    }
     
-    // Deduplicate based on item ID and image hash
-    const idMatch = url.match(/item\/(\d+\/[^\/]+)/);
-    const key = idMatch ? idMatch[1] : url;
+    // Filter by ad ID - only include images belonging to THIS ad
+    if (adId) {
+      const imgItemMatch = url.match(/item\/(\d+)\//);
+      if (imgItemMatch && imgItemMatch[1] !== adId) {
+        console.log(`Blocket: Skipping image from other ad ${imgItemMatch[1]} (expected ${adId})`);
+        continue;
+      }
+    }
+    
+    // Upgrade to 1200w for better quality
+    // Handle both /480w/ and /480x480c// formats
+    url = url.replace(/\/\d+w\//, '/1200w/');
+    url = url.replace(/\/\d+x\d+c\/\//, '/1200w/');
+    
+    // Deduplicate based on the image hash (last part of URL)
+    const hashMatch = url.match(/\/([^\/]+)$/);
+    const key = hashMatch ? hashMatch[1] : url;
     
     if (!seen.has(key)) {
       seen.add(key);
@@ -879,10 +903,21 @@ function extractBlocketImages(markdown: string, html: string): string[] {
     const htmlPattern = /(?:data-src|src)="(https:\/\/images\.blocketcdn\.se[^"]+)"/g;
     while ((match = htmlPattern.exec(html)) !== null) {
       let url = match[1];
-      url = url.replace(/\/\d+w\//, '/1200w/');
       
-      const idMatch = url.match(/item\/(\d+\/[^\/]+)/);
-      const key = idMatch ? idMatch[1] : url;
+      // Skip profile placeholders
+      if (url.includes('profile_placeholders')) continue;
+      
+      // Filter by ad ID
+      if (adId) {
+        const imgItemMatch = url.match(/item\/(\d+)\//);
+        if (imgItemMatch && imgItemMatch[1] !== adId) continue;
+      }
+      
+      url = url.replace(/\/\d+w\//, '/1200w/');
+      url = url.replace(/\/\d+x\d+c\/\//, '/1200w/');
+      
+      const hashMatch = url.match(/\/([^\/]+)$/);
+      const key = hashMatch ? hashMatch[1] : url;
       
       if (!seen.has(key)) {
         seen.add(key);
@@ -891,7 +926,7 @@ function extractBlocketImages(markdown: string, html: string): string[] {
     }
   }
   
-  console.log(`Blocket: Extracted ${images.length} images`);
+  console.log(`Blocket: Extracted ${images.length} images for ad ${adId}`);
   return images;
 }
 
@@ -925,10 +960,13 @@ function isDlxPlaceholderImage(url: string): boolean {
   );
 }
 
-function extractImages(markdown: string, html: string, sourceType: string): string[] {
+function extractImages(markdown: string, html: string, sourceType: string, adUrl: string = ''): string[] {
   const images: string[] = [];
   
-  if (sourceType === 'musikborsen') {
+  if (sourceType === 'blocket') {
+    // Use Blocket-specific extraction with ad URL filtering
+    return extractBlocketImages(markdown, html, adUrl);
+  } else if (sourceType === 'musikborsen') {
     // For Musikbörsen, look for WordPress uploads but deduplicate by base URL
     const mbRegex = /https?:\/\/musikborsen\.se\/wp-content\/uploads\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
     const seenBaseUrls = new Set<string>();
@@ -1155,11 +1193,8 @@ function extractImages(markdown: string, html: string, sourceType: string): stri
     console.log(`Gear4Music: Final image count: ${finalImages.length}`);
     
     return finalImages;
-  } else if (sourceType === 'blocket') {
-    // Blocket: Use dedicated extraction function
-    return extractBlocketImages(markdown, html);
   } else {
-    // Generic image extraction
+    // Generic image extraction (Note: Blocket is handled at the top of extractImages())
     const genericRegex = /https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
     let match;
     while ((match = genericRegex.exec(html)) !== null) {
