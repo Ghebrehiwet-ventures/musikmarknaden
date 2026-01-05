@@ -744,8 +744,10 @@ async function scrapeSource(
     console.log(`Gear4Music: Total products across ${page} pages: ${allProducts.length}`);
   } else if (domain.includes('blocket')) {
     // Blocket pagination: ?page=N, ~50 ads per page
-    const maxPages = previewLimit ? 1 : 40; // Cap at 40 pages (~2000 ads) for safety
-    const totalLimit = previewLimit || 2500;
+    // Each page takes ~5 seconds, Edge Functions timeout at ~2 min
+    // Use 15 pages max (~750 ads) to stay well under timeout
+    const maxPages = previewLimit ? 1 : 15;
+    const totalLimit = previewLimit || 1000;
     let page = 1;
     let pageUrl = scrapeUrl;
     
