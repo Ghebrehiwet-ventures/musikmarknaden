@@ -860,18 +860,12 @@ function extractBlocketImages(markdown: string, html: string, adUrl: string): st
   
   console.log(`Blocket: Extracting images for ad ID: ${adId}`);
   
-  // Pattern 1: Markdown images from Blocket CDN
-  // Format: ![alt text](https://images.blocketcdn.se/dynamic/480w/item/XXXXX/...)
-  const imgPattern = /!\[[^\]]*\]\((https:\/\/images\.blocketcdn\.se[^)]+)\)/g;
-  let match;
-  
-  while ((match = imgPattern.exec(markdown)) !== null) {
-    let url = match[1];
-    
-    // Skip profile placeholder images
+  // Helper to process and add image URL
+  const addImage = (url: string): boolean => {
+    // Skip profile placeholders
     if (url.includes('profile_placeholders')) {
       console.log('Blocket: Skipping profile placeholder:', url);
-      continue;
+      return false;
     }
     
     // Filter by ad ID - only include images belonging to THIS ad
@@ -879,14 +873,15 @@ function extractBlocketImages(markdown: string, html: string, adUrl: string): st
       const imgItemMatch = url.match(/item\/(\d+)\//);
       if (imgItemMatch && imgItemMatch[1] !== adId) {
         console.log(`Blocket: Skipping image from other ad ${imgItemMatch[1]} (expected ${adId})`);
-        continue;
+        return false;
       }
     }
     
-    // Upgrade to 1200w for better quality
-    // Handle both /480w/ and /480x480c// formats
-    url = url.replace(/\/\d+w\//, '/1200w/');
-    url = url.replace(/\/\d+x\d+c\/\//, '/1200w/');
+    // Upgrade to 960w for better quality (1200w doesn't exist, causes 404)
+    // Handle /default/, /480w/, and /480x480c// formats
+    url = url.replace(/\/default\//, '/960w/');
+    url = url.replace(/\/\d+w\//, '/960w/');
+    url = url.replace(/\/\d+x\d+c\/\//, '/960w/');
     
     // Deduplicate based on the image hash (last part of URL)
     const hashMatch = url.match(/\/([^\/]+)$/);
@@ -895,38 +890,60 @@ function extractBlocketImages(markdown: string, html: string, adUrl: string): st
     if (!seen.has(key)) {
       seen.add(key);
       images.push(url);
+      return true;
     }
+    return false;
+  };
+  
+  // Priority 1: HTML data-image attributes (main gallery images)
+  // Format: data-image="https://images.blocketcdn.se/dynamic/default/item/19933733/..."
+  if (html) {
+    const dataImagePattern = /data-image="(https:\/\/images\.blocketcdn\.se[^"]+)"/g;
+    let match;
+    while ((match = dataImagePattern.exec(html)) !== null) {
+      addImage(match[1]);
+    }
+    console.log(`Blocket: Found ${images.length} images from data-image attributes`);
   }
   
-  // Pattern 2: Try HTML data-src or src attributes from Blocket CDN
+  // Priority 2: data-srcset attributes (pick 960w or largest available)
   if (images.length === 0 && html) {
-    const htmlPattern = /(?:data-src|src)="(https:\/\/images\.blocketcdn\.se[^"]+)"/g;
-    while ((match = htmlPattern.exec(html)) !== null) {
-      let url = match[1];
+    const srcsetPattern = /data-srcset="([^"]+)"/g;
+    let match;
+    while ((match = srcsetPattern.exec(html)) !== null) {
+      const srcset = match[1];
+      // Try to find 960w version, or fall back to first URL
+      const url960 = srcset.match(/(https:\/\/images\.blocketcdn\.se\/dynamic\/960w\/[^\s,]+)/);
+      const url1280 = srcset.match(/(https:\/\/images\.blocketcdn\.se\/dynamic\/1280w\/[^\s,]+)/);
+      const urlAny = srcset.match(/(https:\/\/images\.blocketcdn\.se[^\s,]+)/);
       
-      // Skip profile placeholders
-      if (url.includes('profile_placeholders')) continue;
-      
-      // Filter by ad ID
-      if (adId) {
-        const imgItemMatch = url.match(/item\/(\d+)\//);
-        if (imgItemMatch && imgItemMatch[1] !== adId) continue;
-      }
-      
-      url = url.replace(/\/\d+w\//, '/1200w/');
-      url = url.replace(/\/\d+x\d+c\/\//, '/1200w/');
-      
-      const hashMatch = url.match(/\/([^\/]+)$/);
-      const key = hashMatch ? hashMatch[1] : url;
-      
-      if (!seen.has(key)) {
-        seen.add(key);
-        images.push(url);
-      }
+      const bestUrl = url960?.[1] || url1280?.[1] || urlAny?.[1];
+      if (bestUrl) addImage(bestUrl);
     }
+    console.log(`Blocket: Found ${images.length} images from data-srcset attributes`);
   }
   
-  console.log(`Blocket: Extracted ${images.length} images for ad ${adId}`);
+  // Priority 3: data-src or src attributes from Blocket CDN
+  if (images.length === 0 && html) {
+    const htmlPattern = /(?:data-src|src)="(https:\/\/images\.blocketcdn\.se\/dynamic\/[^"]+)"/g;
+    let match;
+    while ((match = htmlPattern.exec(html)) !== null) {
+      addImage(match[1]);
+    }
+    console.log(`Blocket: Found ${images.length} images from data-src/src attributes`);
+  }
+  
+  // Priority 4: Markdown images (fallback)
+  if (images.length === 0) {
+    const imgPattern = /!\[[^\]]*\]\((https:\/\/images\.blocketcdn\.se[^)]+)\)/g;
+    let match;
+    while ((match = imgPattern.exec(markdown)) !== null) {
+      addImage(match[1]);
+    }
+    console.log(`Blocket: Found ${images.length} images from markdown`);
+  }
+  
+  console.log(`Blocket: Total extracted ${images.length} images for ad ${adId}`);
   return images;
 }
 
