@@ -71,7 +71,10 @@ serve(async (req) => {
       }
       
       // Return cached data if less than 7 days old
-      if (daysSinceUpdate < 7) {
+      const cachedImagesCount = Array.isArray(cached.images) ? cached.images.length : 0;
+      const bypassCacheForBlocket = sourceType === 'blocket' && cachedImagesCount <= 1;
+
+      if (daysSinceUpdate < 7 && !bypassCacheForBlocket) {
         console.log('✓ Cache hit for:', ad_url, `(${daysSinceUpdate.toFixed(1)} days old)`);
         return new Response(
           JSON.stringify({
@@ -88,6 +91,8 @@ serve(async (req) => {
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      } else if (daysSinceUpdate < 7 && bypassCacheForBlocket) {
+        console.log(`× Blocket cache incomplete (images=${cachedImagesCount}) - rescraping:`, ad_url);
       } else {
         console.log('Cache expired for:', ad_url, `(${daysSinceUpdate.toFixed(1)} days old)`);
       }
@@ -107,6 +112,9 @@ serve(async (req) => {
 
     // Blocket loads images dynamically with JS - need to wait for rendering
     const needsWait = sourceType === 'blocket';
+    const formats = sourceType === 'blocket'
+      ? ['markdown', 'html', 'rawHtml']
+      : ['markdown', 'html'];
     
     const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
@@ -116,9 +124,9 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         url: ad_url,
-        formats: ['markdown', 'html'],
+        formats,
         onlyMainContent: false, // Get full page for better image extraction
-        ...(needsWait && { waitFor: 3000 }), // Wait 3s for Blocket gallery to load
+        ...(needsWait && { waitFor: 6000 }), // Blocket gallery often loads after initial render
       }),
     });
 
@@ -136,7 +144,9 @@ serve(async (req) => {
     console.log(`Scrape successful in ${scrapeTime}ms, parsing ad details for source: ${sourceType}`);
 
     const markdown = data.data?.markdown || data.markdown || '';
-    const html = data.data?.html || data.html || '';
+    const processedHtml = data.data?.html || data.html || '';
+    const rawHtml = data.data?.rawHtml || data.rawHtml || '';
+    const html = sourceType === 'blocket' && rawHtml ? rawHtml : processedHtml;
     const metadata = data.data?.metadata || data.metadata || {};
 
     const adDetails = parseAdDetails(markdown, html, metadata, sourceType);
@@ -946,7 +956,19 @@ function extractBlocketImages(markdown: string, html: string, adUrl: string): st
     }
     console.log(`Blocket: Found ${images.length} images from markdown`);
   }
-  
+
+  // Fallback: scan for any Blocket CDN URLs in raw HTML / embedded JSON (covers Next.js __NEXT_DATA__)
+  // This is safe because we still filter by adId.
+  const combined = `${html}\n${markdown}`;
+  // Some pages embed URLs as escaped strings (e.g. https:\/\/images...), normalize first.
+  const normalizedCombined = combined.replace(/\\\//g, '/');
+  const urlPattern = /https:\/\/images\.blocketcdn\.se\/dynamic\/[A-Za-z0-9\/._-]+/g;
+
+  let m;
+  while ((m = urlPattern.exec(normalizedCombined)) !== null) {
+    addImage(m[0]);
+  }
+
   console.log(`Blocket: Total extracted ${images.length} images for ad ${adId}`);
   return images;
 }
