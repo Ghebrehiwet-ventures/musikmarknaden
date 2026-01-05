@@ -848,8 +848,13 @@ function extractImages(markdown: string, html: string, sourceType: string): stri
     console.log('Gear4Music: Starting markdown-first image extraction');
     
     // Step 1: PRIMARY - Extract from markdown bullets labeled "Bild av det faktiska föremålet"
-    // Markdown format: "- Bild av det faktiska föremålet ... Loading zoom](https://r2.gear4music.com/media/.../1200/preview.jpg ...)"
-    const actualItemPattern = /Bild av det faktiska föremålet[^\n]*\]\((https:\/\/r2\.gear4music\.com\/media\/[^)]+)\)/gi;
+    // Markdown format spans multiple lines with escaped newlines:
+    // - [Bild av det faktiska föremålet \
+    //   ![alt](thumbnail)\
+    //   \
+    //   Loading zoom](HIGH_RES_URL "title")
+    // Use [\s\S]*? to match across newlines (non-greedy)
+    const actualItemPattern = /Bild av det faktiska föremålet[\s\S]*?Loading zoom\]\((https:\/\/r2\.gear4music\.com\/media\/[^"\s)]+)/gi;
     let match;
     
     while ((match = actualItemPattern.exec(markdown)) !== null) {
