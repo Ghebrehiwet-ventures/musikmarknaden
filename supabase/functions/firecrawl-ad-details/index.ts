@@ -105,6 +105,9 @@ serve(async (req) => {
     console.log(`× Cache miss - scraping from Firecrawl [${sourceType}]:`, ad_url);
     const scrapeStart = Date.now();
 
+    // Blocket loads images dynamically with JS - need to wait for rendering
+    const needsWait = sourceType === 'blocket';
+    
     const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
@@ -115,6 +118,7 @@ serve(async (req) => {
         url: ad_url,
         formats: ['markdown', 'html'],
         onlyMainContent: false, // Get full page for better image extraction
+        ...(needsWait && { waitFor: 3000 }), // Wait 3s for Blocket gallery to load
       }),
     });
 
