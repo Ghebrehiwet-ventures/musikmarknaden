@@ -10,6 +10,17 @@ import { getAdDetails, fetchAdListings, Ad } from "@/lib/api";
 import { CATEGORIES, mapToInternalCategory } from "@/lib/categories";
 import { cn } from "@/lib/utils";
 
+// Ensure external URLs open in new tab
+function handleExternalClick(e: React.MouseEvent<HTMLAnchorElement>, url: string) {
+  e.preventDefault();
+  // Normalize URL
+  let normalizedUrl = url;
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    normalizedUrl = 'https://' + url;
+  }
+  window.open(normalizedUrl, '_blank', 'noopener,noreferrer');
+}
+
 function getSourceInfo(url: string): { name: string; domain: string } {
   if (url.includes('musikborsen.se')) return { name: 'Musikbörsen.se', domain: 'musikborsen.se' };
   if (url.includes('gearloop.se')) return { name: 'Gearloop.se', domain: 'gearloop.se' };
@@ -363,7 +374,12 @@ export default function AdDetails() {
               <Link to="/">Tillbaka till startsidan</Link>
             </Button>
             <Button asChild>
-              <a href={ad.ad_url} target="_blank" rel="noopener noreferrer">
+              <a 
+                href={ad.ad_url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                onClick={(e) => handleExternalClick(e, ad.ad_url)}
+              >
                 Kontrollera på {sourceInfo.name}
               </a>
             </Button>
@@ -611,7 +627,12 @@ export default function AdDetails() {
                 {/* Actions */}
                 <div className="mt-6 space-y-3">
                   <Button className="w-full" size="lg" asChild>
-                    <a href={ad.ad_url} target="_blank" rel="noopener noreferrer">
+                    <a 
+                      href={ad.ad_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      onClick={(e) => handleExternalClick(e, ad.ad_url)}
+                    >
                       <ExternalLink className="h-4 w-4 mr-2" />
                       Visa på {sourceInfo.name}
                     </a>
@@ -703,7 +724,12 @@ export default function AdDetails() {
             </Button>
           )}
           <Button className="flex-1" size="lg" asChild>
-            <a href={ad.ad_url} target="_blank" rel="noopener noreferrer">
+            <a 
+              href={ad.ad_url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              onClick={(e) => handleExternalClick(e, ad.ad_url)}
+            >
               <ExternalLink className="h-4 w-4 mr-2" />
               Visa på {sourceInfo.name}
             </a>

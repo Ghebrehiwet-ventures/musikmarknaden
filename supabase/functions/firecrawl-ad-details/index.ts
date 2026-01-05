@@ -273,7 +273,7 @@ function parseAdDetails(
     : extractLocation(markdown);
   
   // Extract images with source-specific patterns
-  const images = extractImages(html, sourceType);
+  const images = extractImages(markdown, html, sourceType);
   
   // Extract contact info - pass sourceType to avoid fabricated phone numbers
   const contactInfo = extractContactInfo(markdown, html, sourceType);
@@ -694,7 +694,7 @@ function isDlxPlaceholderImage(url: string): boolean {
   );
 }
 
-function extractImages(html: string, sourceType: string): string[] {
+function extractImages(markdown: string, html: string, sourceType: string): string[] {
   const images: string[] = [];
   
   if (sourceType === 'musikborsen') {
@@ -838,92 +838,87 @@ function extractImages(html: string, sourceType: string): string[] {
     return images;
   } else if (sourceType === 'gear4music') {
     // Gear4Music: Extract ONLY "actual item" (secondhand) images
-    // User specifically wants only "Bild av det faktiska föremålet", not stock images
-    const seenBaseUrls = new Set<string>();
-    const allImages: string[] = [];
-    const secondhandMediaIds = new Set<string>();
+    // MARKDOWN-FIRST approach: The markdown explicitly labels images as:
+    // - "Bild av det faktiska föremålet" (actual item / secondhand)
+    // - "Bild av ny artikel" (stock photo)
     
-    // Step 1: Identify which media IDs belong to "Bild av det faktiska föremålet" (secondhand)
-    // These are in a thumbnail section labeled "Bild av det faktiska föremålet"
-    const secondhandSectionMatch = html.match(/Bild av det faktiska föremålet[\s\S]*?<\/ul>/i);
+    const seenMediaIds = new Set<string>();
+    const actualItemImages: string[] = [];
     
-    if (secondhandSectionMatch) {
-      // Extract media IDs from this section (format: media/XXX/XXXXXXX)
-      const mediaIdRegex = /r2\.gear4music\.com\/media\/(\d+\/\d+)/gi;
-      let match;
-      while ((match = mediaIdRegex.exec(secondhandSectionMatch[0])) !== null) {
-        secondhandMediaIds.add(match[1]);
-      }
-      console.log(`Gear4Music: Found ${secondhandMediaIds.size} secondhand media IDs`);
-    }
+    console.log('Gear4Music: Starting markdown-first image extraction');
     
-    // Step 2: Extract high-res images (1200px) from data-src in carousel
-    const dataSrcRegex = /data-src="(https:\/\/r2\.gear4music\.com\/media\/[^"]+)"/gi;
+    // Step 1: PRIMARY - Extract from markdown bullets labeled "Bild av det faktiska föremålet"
+    // Markdown format: "- Bild av det faktiska föremålet ... Loading zoom](https://r2.gear4music.com/media/.../1200/preview.jpg ...)"
+    const actualItemPattern = /Bild av det faktiska föremålet[^\n]*\]\((https:\/\/r2\.gear4music\.com\/media\/[^)]+)\)/gi;
     let match;
-    while ((match = dataSrcRegex.exec(html)) !== null) {
+    
+    while ((match = actualItemPattern.exec(markdown)) !== null) {
       const url = match[1];
       
-      // Skip payment icons, badges, logos
-      if (url.includes('/payment/') || url.includes('/badge') || 
-          url.includes('/logo') || url.includes('/brand/') ||
-          url.includes('/dist/images/')) continue;
-      
-      // Only include 1200px versions (highest quality)
-      if (!url.includes('/1200/')) continue;
-      
-      // Extract media ID to dedupe and filter
+      // Extract media ID (format: media/XXX/XXXXXXX) for deduplication
       const mediaIdMatch = url.match(/media\/(\d+\/\d+)/);
       if (!mediaIdMatch) continue;
       
       const mediaId = mediaIdMatch[1];
+      if (seenMediaIds.has(mediaId)) continue;
+      seenMediaIds.add(mediaId);
       
-      // Skip if we already have this image
-      if (seenBaseUrls.has(mediaId)) continue;
-      seenBaseUrls.add(mediaId);
-      
-      // If we identified secondhand images, only include those
-      if (secondhandMediaIds.size > 0) {
-        if (secondhandMediaIds.has(mediaId)) {
-          allImages.push(url);
-        }
-      } else {
-        // No secondhand section found, include all product images
-        allImages.push(url);
+      // Prefer 1200px version, upgrade if needed
+      let highResUrl = url;
+      if (!url.includes('/1200/')) {
+        highResUrl = url.replace(/\/\d+\/preview\.jpg/, '/1200/preview.jpg');
       }
+      
+      actualItemImages.push(highResUrl);
     }
     
-    // Step 3: Fallback - if no data-src found, try srcset in picture elements
-    if (allImages.length === 0) {
-      const pictureRegex = /<picture[^>]*>[\s\S]*?<source[^>]*srcset="([^"]+)"[\s\S]*?<\/picture>/gi;
-      while ((match = pictureRegex.exec(html)) !== null) {
-        const srcset = match[1];
-        // Get largest image from srcset
-        const urls = srcset.split(',').map(s => s.trim().split(/\s+/)[0]);
-        const largestUrl = urls[urls.length - 1] || urls[0];
+    console.log(`Gear4Music: Markdown extracted ${actualItemImages.length} actual-item images`);
+    
+    // Step 2: FALLBACK - If markdown yielded nothing, try HTML with SECONDHAND in title
+    if (actualItemImages.length === 0) {
+      console.log('Gear4Music: Falling back to HTML SECONDHAND title matching');
+      
+      // Look for images where title contains "SECONDHAND"
+      const imgWithTitleRegex = /<img[^>]*title="([^"]*SECONDHAND[^"]*)"[^>]*(?:data-src|src)="(https:\/\/r2\.gear4music\.com\/media\/[^"]+)"/gi;
+      
+      while ((match = imgWithTitleRegex.exec(html)) !== null) {
+        const url = match[2];
         
-        if (!largestUrl) continue;
-        const fullUrl = largestUrl.startsWith('//') ? 'https:' + largestUrl : largestUrl;
+        // Skip non-product assets
+        if (url.includes('/payment/') || url.includes('/badge') || 
+            url.includes('/logo') || url.includes('/brand/') ||
+            url.includes('/dist/images/')) continue;
         
-        // Only include product images from gear4music CDN
-        if (!fullUrl.includes('r2.gear4music.com')) continue;
-        if (fullUrl.includes('/payment/') || fullUrl.includes('/brand/') || 
-            fullUrl.includes('/logo') || fullUrl.includes('/dist/images/')) continue;
-        
-        const mediaIdMatch = fullUrl.match(/media\/(\d+\/\d+)/);
+        const mediaIdMatch = url.match(/media\/(\d+\/\d+)/);
         if (!mediaIdMatch) continue;
         
         const mediaId = mediaIdMatch[1];
-        if (seenBaseUrls.has(mediaId)) continue;
-        seenBaseUrls.add(mediaId);
+        if (seenMediaIds.has(mediaId)) continue;
+        seenMediaIds.add(mediaId);
         
-        if (secondhandMediaIds.size === 0 || secondhandMediaIds.has(mediaId)) {
-          allImages.push(fullUrl);
+        // Upgrade to 1200px
+        let highResUrl = url;
+        if (!url.includes('/1200/')) {
+          highResUrl = url.replace(/\/\d+\/preview\.jpg/, '/1200/preview.jpg');
         }
+        
+        actualItemImages.push(highResUrl);
       }
+      
+      console.log(`Gear4Music: HTML fallback found ${actualItemImages.length} SECONDHAND images`);
     }
     
-    console.log(`Gear4Music: Found ${allImages.length} secondhand images (filtered from ${seenBaseUrls.size} unique)`);
-    return allImages;
+    // Step 3: NO FINAL FALLBACK - if we can't identify actual item images, return empty
+    // This prevents stock photos from being shown
+    if (actualItemImages.length === 0) {
+      console.log('Gear4Music: No actual-item images found - returning empty to avoid stock photos');
+    }
+    
+    // Cap at 12 images max
+    const finalImages = actualItemImages.slice(0, 12);
+    console.log(`Gear4Music: Final image count: ${finalImages.length}`);
+    
+    return finalImages;
   } else {
     // Generic image extraction
     const genericRegex = /https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
