@@ -182,42 +182,61 @@ function parseMusikborsen(html: string, baseUrl: string): ScrapedProduct[] {
   return products;
 }
 
-// Parse Blocket JSON API response
-function parseBlocket(html: string, baseUrl: string): ScrapedProduct[] {
+// Parse Blocket from markdown (Firecrawl output)
+// Markdown format:
+// ![](https://images.blocketcdn.se/.../200/...)
+// 
+// 1 150 kr
+// 
+// ## [Produkttitel](https://www.blocket.se/annons/...)
+// 
+// Plats 9 min
+function parseBlocketMarkdown(markdown: string, baseUrl: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
   
-  // Blocket uses a JSON API, try to extract JSON data
-  try {
-    // Look for __NEXT_DATA__ or similar JSON payload
-    const jsonMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
-    if (jsonMatch) {
-      const jsonData = JSON.parse(jsonMatch[1]);
-      const ads = jsonData?.props?.pageProps?.ads || jsonData?.props?.pageProps?.items || [];
-      
-      for (const ad of ads) {
-        const title = ad.subject || ad.title || '';
-        const adUrl = ad.url || ad.share_url || (ad.ad_id ? `${baseUrl}/annons/${ad.ad_id}` : '');
-        const priceText = ad.price?.value ? `${ad.price.value} kr` : '';
-        const { text, amount } = parsePrice(priceText);
-        const location = ad.location?.name || ad.location?.city || '';
-        const imageUrl = ad.images?.[0]?.url || ad.image?.url || '';
-        
-        if (title && adUrl) {
-          products.push({
-            title,
-            ad_url: adUrl.startsWith('http') ? adUrl : `${baseUrl}${adUrl}`,
-            price_text: text || null,
-            price_amount: amount,
-            location,
-            image_url: imageUrl,
-            category: categorizeByKeywords(title),
-          });
-        }
-      }
+  // Pattern to match: image, price line, title link, location/time
+  // The structure from Blocket markdown:
+  // ![](IMAGE_URL)
+  // 
+  // PRICE_TEXT
+  // 
+  // ## [TITLE](AD_URL)
+  // 
+  // LOCATION TIME
+  const adPattern = /!\[\]\((https:\/\/images\.blocketcdn\.se[^)]+)\)\s*\n\s*\n\s*([^\n]+)\s*\n\s*\n\s*## \[([^\]]+)\]\(([^)]+)\)\s*\n\s*\n\s*([^\n]+)/g;
+  
+  let match;
+  while ((match = adPattern.exec(markdown)) !== null) {
+    const [, imageUrl, priceText, title, adUrl, locationTime] = match;
+    
+    // Parse price - can be "1 150 kr", "Bortskänkes", "Säljes", etc.
+    const { text, amount } = parsePrice(priceText);
+    
+    // Extract location (remove time suffix like "9 min", "3 tim", "2 dagar")
+    const location = locationTime
+      .replace(/\d+\s*(min|tim|dagar?|sekunder?|månad(er)?|veckor?)\s*$/i, '')
+      .trim();
+    
+    if (title && adUrl) {
+      products.push({
+        title: decodeHtmlEntities(title.trim()),
+        ad_url: adUrl.startsWith('http') ? adUrl : `${baseUrl}${adUrl}`,
+        price_text: text || null,
+        price_amount: amount,
+        location,
+        image_url: imageUrl,
+        category: categorizeByKeywords(title),
+      });
     }
-  } catch (e) {
-    console.log('Blocket JSON parsing failed, trying HTML fallback');
   }
+  
+  console.log(`Blocket markdown parser found ${products.length} products`);
+  return products;
+}
+
+// Legacy HTML parser for Blocket (fallback)
+function parseBlocket(html: string, baseUrl: string): ScrapedProduct[] {
+  const products: ScrapedProduct[] = [];
   
   // HTML fallback for Blocket
   const adMatches = html.matchAll(/<article[^>]*class="[^"]*Item[^"]*"[^>]*>([\s\S]*?)<\/article>/gi);
@@ -598,7 +617,12 @@ async function scrapeSinglePage(
   if (domain.includes('musikborsen')) {
     products = parseMusikborsen(html, baseUrl);
   } else if (domain.includes('blocket')) {
-    products = parseBlocket(html, baseUrl);
+    // Blocket: Use markdown parser (primary) with HTML fallback
+    products = parseBlocketMarkdown(markdown, baseUrl);
+    if (products.length === 0) {
+      console.log('Blocket markdown parser found nothing, trying HTML fallback...');
+      products = parseBlocket(html, baseUrl);
+    }
   } else if (domain.includes('dlxmusic')) {
     products = parseDLXMusic(html, baseUrl);
   } else if (domain.includes('gear4music')) {
@@ -718,6 +742,52 @@ async function scrapeSource(
     }
     
     console.log(`Gear4Music: Total products across ${page} pages: ${allProducts.length}`);
+  } else if (domain.includes('blocket')) {
+    // Blocket pagination: ?page=N, ~50 ads per page
+    const maxPages = previewLimit ? 1 : 40; // Cap at 40 pages (~2000 ads) for safety
+    const totalLimit = previewLimit || 2500;
+    let page = 1;
+    let pageUrl = scrapeUrl;
+    
+    while (allProducts.length < totalLimit && page <= maxPages) {
+      console.log(`Blocket: Fetching page ${page}/${maxPages}: ${pageUrl}`);
+      
+      const { products, html, markdown } = await scrapeSinglePage(
+        firecrawlApiKey, pageUrl, baseUrl, sourceName, domain
+      );
+      
+      // Use markdown parser for Blocket
+      let pageProducts = parseBlocketMarkdown(markdown, baseUrl);
+      if (pageProducts.length === 0) {
+        console.log('Blocket markdown parser found nothing, trying HTML fallback...');
+        pageProducts = parseBlocket(html, baseUrl);
+      }
+      
+      console.log(`Blocket: Page ${page} returned ${pageProducts.length} products, total so far: ${allProducts.length + pageProducts.length}`);
+      
+      // Stop if no products found (end of listings)
+      if (pageProducts.length === 0) {
+        console.log(`Blocket: No products on page ${page}, stopping pagination`);
+        break;
+      }
+      
+      allProducts.push(...pageProducts.slice(0, totalLimit - allProducts.length));
+      
+      // In preview mode, stop if we have enough
+      if (previewLimit && allProducts.length >= previewLimit) {
+        console.log(`Preview: Got enough products (${allProducts.length}), stopping`);
+        break;
+      }
+      
+      // Next page
+      const nextPage = page + 1;
+      const url = new URL(scrapeUrl);
+      url.searchParams.set('page', String(nextPage));
+      pageUrl = url.toString();
+      page++;
+    }
+    
+    console.log(`Blocket: Total products across ${page} pages: ${allProducts.length}`);
   } else {
     // Single page scrape for other sources
     const { products, html, markdown } = await scrapeSinglePage(
