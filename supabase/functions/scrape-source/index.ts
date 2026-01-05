@@ -672,6 +672,52 @@ async function scrapeSource(
     }
     
     console.log(`Total DLX products across ${page} pages: ${allProducts.length}`);
+  } else if (domain.includes('gear4music')) {
+    // Gear4Music needs pagination with ?p=N
+    const maxPages = previewLimit ? 1 : 15; // ~40 products per page, 499 total = ~13 pages, use 15 for safety
+    let page = 1;
+    let pageUrl = scrapeUrl;
+    
+    while (page <= maxPages) {
+      console.log(`Fetching Gear4Music page ${page}: ${pageUrl}`);
+      
+      const { products, html } = await scrapeSinglePage(
+        firecrawlApiKey, pageUrl, baseUrl, sourceName, domain
+      );
+      
+      console.log(`Got ${products.length} products from page ${page}`);
+      allProducts.push(...products);
+      
+      // In preview mode, stop if we have enough
+      if (previewLimit && allProducts.length >= previewLimit) {
+        console.log(`Preview: Got enough products (${allProducts.length}), stopping`);
+        break;
+      }
+      
+      // Stop if we got no products (empty page)
+      if (products.length === 0) {
+        console.log(`No products on page ${page}, stopping`);
+        break;
+      }
+      
+      // Check if there's a next page - Gear4Music uses ?p=N
+      const nextPage = page + 1;
+      const hasNextPage = html.includes(`p=${nextPage}`) || 
+                          html.includes(`?p=${nextPage}`) ||
+                          products.length >= 35; // If we got a near-full page, likely more
+      
+      if (hasNextPage) {
+        const url = new URL(scrapeUrl);
+        url.searchParams.set('p', String(nextPage));
+        pageUrl = url.toString();
+        page++;
+      } else {
+        console.log(`No more pages found after page ${page}`);
+        break;
+      }
+    }
+    
+    console.log(`Total Gear4Music products across ${page} pages: ${allProducts.length}`);
   } else {
     // Single page scrape for other sources
     const { products, html, markdown } = await scrapeSinglePage(
