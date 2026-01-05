@@ -837,59 +837,93 @@ function extractImages(html: string, sourceType: string): string[] {
     
     return images;
   } else if (sourceType === 'gear4music') {
-    // Gear4Music: Extract from product image gallery
-    // Main images are in <picture> tags with srcset
-    // Look for the main product gallery section
-    const seenUrls = new Set<string>();
+    // Gear4Music: Extract ONLY "actual item" (secondhand) images
+    // User specifically wants only "Bild av det faktiska föremålet", not stock images
+    const seenBaseUrls = new Set<string>();
+    const allImages: string[] = [];
+    const secondhandMediaIds = new Set<string>();
     
-    // 1. Look for main product image in picture elements with srcset
-    // The gallery typically has images with srcset containing different sizes
-    const pictureRegex = /<picture[^>]*>[\s\S]*?<source[^>]*srcset="([^"]+)"[\s\S]*?<\/picture>/gi;
+    // Step 1: Identify which media IDs belong to "Bild av det faktiska föremålet" (secondhand)
+    // These are in a thumbnail section labeled "Bild av det faktiska föremålet"
+    const secondhandSectionMatch = html.match(/Bild av det faktiska föremålet[\s\S]*?<\/ul>/i);
+    
+    if (secondhandSectionMatch) {
+      // Extract media IDs from this section (format: media/XXX/XXXXXXX)
+      const mediaIdRegex = /r2\.gear4music\.com\/media\/(\d+\/\d+)/gi;
+      let match;
+      while ((match = mediaIdRegex.exec(secondhandSectionMatch[0])) !== null) {
+        secondhandMediaIds.add(match[1]);
+      }
+      console.log(`Gear4Music: Found ${secondhandMediaIds.size} secondhand media IDs`);
+    }
+    
+    // Step 2: Extract high-res images (1200px) from data-src in carousel
+    const dataSrcRegex = /data-src="(https:\/\/r2\.gear4music\.com\/media\/[^"]+)"/gi;
     let match;
-    while ((match = pictureRegex.exec(html)) !== null) {
-      const srcset = match[1];
-      // Parse srcset and get the largest image
-      const urls = srcset.split(',').map(s => s.trim().split(/\s+/)[0]);
-      // Get the largest (usually last or has highest width)
-      for (const url of urls) {
-        if (!url) continue;
-        const fullUrl = url.startsWith('//') ? 'https:' + url : url;
+    while ((match = dataSrcRegex.exec(html)) !== null) {
+      const url = match[1];
+      
+      // Skip payment icons, badges, logos
+      if (url.includes('/payment/') || url.includes('/badge') || 
+          url.includes('/logo') || url.includes('/brand/') ||
+          url.includes('/dist/images/')) continue;
+      
+      // Only include 1200px versions (highest quality)
+      if (!url.includes('/1200/')) continue;
+      
+      // Extract media ID to dedupe and filter
+      const mediaIdMatch = url.match(/media\/(\d+\/\d+)/);
+      if (!mediaIdMatch) continue;
+      
+      const mediaId = mediaIdMatch[1];
+      
+      // Skip if we already have this image
+      if (seenBaseUrls.has(mediaId)) continue;
+      seenBaseUrls.add(mediaId);
+      
+      // If we identified secondhand images, only include those
+      if (secondhandMediaIds.size > 0) {
+        if (secondhandMediaIds.has(mediaId)) {
+          allImages.push(url);
+        }
+      } else {
+        // No secondhand section found, include all product images
+        allImages.push(url);
+      }
+    }
+    
+    // Step 3: Fallback - if no data-src found, try srcset in picture elements
+    if (allImages.length === 0) {
+      const pictureRegex = /<picture[^>]*>[\s\S]*?<source[^>]*srcset="([^"]+)"[\s\S]*?<\/picture>/gi;
+      while ((match = pictureRegex.exec(html)) !== null) {
+        const srcset = match[1];
+        // Get largest image from srcset
+        const urls = srcset.split(',').map(s => s.trim().split(/\s+/)[0]);
+        const largestUrl = urls[urls.length - 1] || urls[0];
+        
+        if (!largestUrl) continue;
+        const fullUrl = largestUrl.startsWith('//') ? 'https:' + largestUrl : largestUrl;
         
         // Only include product images from gear4music CDN
-        if (!fullUrl.includes('gear4music.com') && !fullUrl.includes('gear4music.se')) continue;
-        // Skip icons, logos, brand images
-        if (fullUrl.includes('/brand/') || fullUrl.includes('/logo') || 
-            fullUrl.includes('/icon') || fullUrl.includes('/badge')) continue;
+        if (!fullUrl.includes('r2.gear4music.com')) continue;
+        if (fullUrl.includes('/payment/') || fullUrl.includes('/brand/') || 
+            fullUrl.includes('/logo') || fullUrl.includes('/dist/images/')) continue;
         
-        if (!seenUrls.has(fullUrl)) {
-          seenUrls.add(fullUrl);
-          images.push(fullUrl);
+        const mediaIdMatch = fullUrl.match(/media\/(\d+\/\d+)/);
+        if (!mediaIdMatch) continue;
+        
+        const mediaId = mediaIdMatch[1];
+        if (seenBaseUrls.has(mediaId)) continue;
+        seenBaseUrls.add(mediaId);
+        
+        if (secondhandMediaIds.size === 0 || secondhandMediaIds.has(mediaId)) {
+          allImages.push(fullUrl);
         }
       }
     }
     
-    // 2. Fallback: Look for img tags with product images
-    if (images.length === 0) {
-      const imgRegex = /<img[^>]*src="([^"]*(?:gear4music|cachefly)[^"]*)"/gi;
-      while ((match = imgRegex.exec(html)) !== null) {
-        let url = match[1];
-        if (url.startsWith('//')) url = 'https:' + url;
-        
-        // Skip small thumbnails, icons, logos
-        if (url.includes('/brand/') || url.includes('/logo') || 
-            url.includes('/icon') || url.includes('/badge') ||
-            url.includes('trustpilot') || url.includes('/header/') ||
-            url.includes('/footer/')) continue;
-        
-        if (!seenUrls.has(url)) {
-          seenUrls.add(url);
-          images.push(url);
-        }
-      }
-    }
-    
-    console.log(`Gear4Music: Found ${images.length} product images`);
-    return images;
+    console.log(`Gear4Music: Found ${allImages.length} secondhand images (filtered from ${seenBaseUrls.size} unique)`);
+    return allImages;
   } else {
     // Generic image extraction
     const genericRegex = /https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
