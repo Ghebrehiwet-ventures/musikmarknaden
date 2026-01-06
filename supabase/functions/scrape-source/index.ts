@@ -495,6 +495,66 @@ function parseSefina(html: string, baseUrl: string): ScrapedProduct[] {
   return products;
 }
 
+// Parse Abicart/TWS sites (Jam.se)
+function parseAbicart(html: string, baseUrl: string, siteName: string): ScrapedProduct[] {
+  const products: ScrapedProduct[] = [];
+  
+  // Abicart/TWS uses <div class="tws-list--list-item">
+  // Product structure:
+  // <div class="tws-list--list-item">
+  //   <a href="https://www.jam.se/sv/produkter/.../product.html">
+  //     <img src="https://cdn.abicart.com/..." alt="Product Name">
+  //   </a>
+  //   <p class="tws-util-heading--heading"><a>Product Name</a></p>
+  //   <span class="tws-api--price-current">1&nbsp;995&nbsp;SEK</span>
+  // </div>
+  
+  const productMatches = html.matchAll(
+    /<div[^>]*class="[^"]*tws-list--list-item[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi
+  );
+
+  for (const match of productMatches) {
+    const productHtml = match[1];
+    
+    // URL: <a href="https://www.jam.se/sv/produkter/...product.html">
+    const urlMatch = productHtml.match(/href="(https?:\/\/[^"]+\/produkter\/[^"]+\.html)"/i);
+    
+    // Title: Try multiple patterns
+    // Pattern 1: <p class="tws-util-heading--heading"><a>Title</a></p>
+    // Pattern 2: <img alt="Title">
+    const titleMatch = productHtml.match(/<p[^>]*class="[^"]*tws-util-heading--heading[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/i) ||
+                       productHtml.match(/<img[^>]*alt="([^"]+)"/i);
+    
+    // Price: <span class="tws-api--price-current">1&nbsp;995&nbsp;SEK</span>
+    const priceMatch = productHtml.match(/<span[^>]*class="[^"]*tws-api--price-current[^"]*"[^>]*>([^<]+)<\/span>/i);
+    
+    // Image: <img src="https://cdn.abicart.com/...">
+    const imgMatch = productHtml.match(/src="(https:\/\/cdn\.abicart\.com[^"]+)"/i);
+    
+    const title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
+    const adUrl = urlMatch ? urlMatch[1] : '';
+    
+    if (title && adUrl) {
+      // Clean price from &nbsp; entities
+      let priceText = priceMatch ? decodeHtmlEntities(priceMatch[1].trim()) : null;
+      const { text, amount } = priceText ? parsePrice(priceText) : { text: null, amount: null };
+      
+      products.push({
+        title,
+        ad_url: adUrl,
+        price_text: text,
+        price_amount: amount,
+        location: siteName,
+        image_url: imgMatch ? imgMatch[1] : '',
+        category: categorizeByKeywords(title),
+      });
+    }
+  }
+  
+  console.log(`Abicart parser found ${products.length} products for ${siteName}`);
+  return products;
+}
+
 // Generic markdown/HTML parser fallback
 function parseGeneric(html: string, markdown: string, baseUrl: string, siteName: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
@@ -629,7 +689,9 @@ async function scrapeSinglePage(
     products = parseGear4Music(html, baseUrl);
   } else if (domain.includes('sefina')) {
     products = parseSefina(html, baseUrl);
-  } else if (domain.includes('jam.se') || domain.includes('slagverket') || domain.includes('uppsalamusikverkstad')) {
+  } else if (domain.includes('jam.se')) {
+    products = parseAbicart(html, baseUrl, sourceName);
+  } else if (domain.includes('slagverket') || domain.includes('uppsalamusikverkstad')) {
     products = parseWooCommerce(html, baseUrl, sourceName);
   } else {
     console.log(`Using generic parser for ${sourceName}`);
