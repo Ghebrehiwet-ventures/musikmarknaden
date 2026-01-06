@@ -103,6 +103,51 @@ export async function fetchAdListings(): Promise<AdsResponse> {
   };
 }
 
+// Check if a Blocket description looks like UI garbage instead of real ad content
+function looksLikeBadBlocketDescription(description: string): boolean {
+  if (!description || description.length < 10) return true;
+  if (description === 'Ingen beskrivning tillgänglig') return true;
+  
+  // Check for common UI markers that indicate we scraped wrong content
+  const badMarkers = [
+    'Torget/',
+    'Villkor',
+    'Information och inspiration',
+    'HouseBlocket',
+    'Instagram-logotyp',
+    'YouTube-logotyp',
+    'Facebook-logotyp',
+    'Gå till annonsen',
+    'Om Blocket',
+    'Kontakta oss',
+    'Chevron',
+    'Person silhouette',
+    'Checklist checkmark',
+    'En del av Vend',
+    'upphovsrättslagen',
+    'Du kanske också gillar',
+    'Liknande annonser',
+  ];
+  
+  // If description contains multiple UI markers, it's bad
+  let markerCount = 0;
+  for (const marker of badMarkers) {
+    if (description.includes(marker)) {
+      markerCount++;
+      if (markerCount >= 2) return true;
+    }
+  }
+  
+  // Check if it's mostly short lines (typical of scraped navigation)
+  const lines = description.split('\n').filter(l => l.trim());
+  const shortLines = lines.filter(l => l.length < 20);
+  if (lines.length > 5 && shortLines.length / lines.length > 0.7) {
+    return true;
+  }
+  
+  return false;
+}
+
 export async function getAdDetails(ad_url: string): Promise<AdDetails> {
   // 1. Check client-side cache first (instant)
   const { data: cached } = await supabase
@@ -114,10 +159,15 @@ export async function getAdDetails(ad_url: string): Promise<AdDetails> {
   if (cached) {
     const daysSinceUpdate = (Date.now() - new Date(cached.updated_at).getTime()) / (1000 * 60 * 60 * 24);
     
-    // Blocket cache bypass: if only 0-1 images, force re-scrape to get full gallery
+    // Blocket cache bypass: if only 0-1 images OR bad description, force re-scrape
     const isBlocket = ad_url.includes('blocket.se');
     const cachedImages = Array.isArray(cached.images) ? (cached.images as string[]) : [];
-    const bypassCacheForBlocket = isBlocket && cachedImages.length <= 1;
+    const cachedDescription = cached.description || '';
+    
+    // Check if description looks like UI garbage
+    const hasBadBlocketDescription = isBlocket && looksLikeBadBlocketDescription(cachedDescription);
+    const hasBadBlocketImages = isBlocket && cachedImages.length <= 1;
+    const bypassCacheForBlocket = hasBadBlocketImages || hasBadBlocketDescription;
     
     if (daysSinceUpdate < 7 && !bypassCacheForBlocket) {
       // Return cached data immediately!

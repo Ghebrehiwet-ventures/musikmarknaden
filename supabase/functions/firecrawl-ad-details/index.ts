@@ -45,36 +45,38 @@ serve(async (req) => {
       .eq('ad_url', ad_url)
       .maybeSingle();
 
-    if (cached) {
-      const updatedAt = new Date(cached.updated_at);
-      const now = new Date();
-      const daysSinceUpdate = (now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60 * 24);
+  if (cached) {
+    const updatedAt = new Date(cached.updated_at);
+    const now = new Date();
+    const daysSinceUpdate = (now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60 * 24);
+    
+    // Check if cached result indicates a dead link
+    if (cached.title === 'Page not found' || cached.description?.includes('Sidan kunde tyvärr inte hittas')) {
+      console.log('× Cached as dead link:', ad_url);
       
-      // Check if cached result indicates a dead link
-      if (cached.title === 'Page not found' || cached.description?.includes('Sidan kunde tyvärr inte hittas')) {
-        console.log('× Cached as dead link:', ad_url);
-        
-        // Mark listing as inactive
-        await supabase
-          .from('ad_listings_cache')
-          .update({ is_active: false })
-          .eq('ad_url', ad_url);
-        
-        return new Response(
-          JSON.stringify({
-            error: 'AD_NOT_FOUND',
-            message: 'Annonsen finns inte längre på källsidan',
-            isDeadLink: true,
-          }),
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      // Mark listing as inactive
+      await supabase
+        .from('ad_listings_cache')
+        .update({ is_active: false })
+        .eq('ad_url', ad_url);
       
-      // Return cached data if less than 7 days old
-      const cachedImagesCount = Array.isArray(cached.images) ? cached.images.length : 0;
-      const bypassCacheForBlocket = sourceType === 'blocket' && cachedImagesCount <= 1;
+      return new Response(
+        JSON.stringify({
+          error: 'AD_NOT_FOUND',
+          message: 'Annonsen finns inte längre på källsidan',
+          isDeadLink: true,
+        }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Return cached data if less than 7 days old
+    const cachedImagesCount = Array.isArray(cached.images) ? cached.images.length : 0;
+    const hasBadBlocketImages = sourceType === 'blocket' && cachedImagesCount <= 1;
+    const hasBadBlocketDescription = sourceType === 'blocket' && looksLikeBadBlocketDescription(cached.description || '');
+    const bypassCacheForBlocket = hasBadBlocketImages || hasBadBlocketDescription;
 
-      if (daysSinceUpdate < 7 && !bypassCacheForBlocket) {
+    if (daysSinceUpdate < 7 && !bypassCacheForBlocket) {
         console.log('✓ Cache hit for:', ad_url, `(${daysSinceUpdate.toFixed(1)} days old)`);
         return new Response(
           JSON.stringify({
@@ -91,9 +93,9 @@ serve(async (req) => {
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
-      } else if (daysSinceUpdate < 7 && bypassCacheForBlocket) {
-        console.log(`× Blocket cache incomplete (images=${cachedImagesCount}) - rescraping:`, ad_url);
-      } else {
+    } else if (daysSinceUpdate < 7 && bypassCacheForBlocket) {
+      console.log(`× Blocket cache incomplete (images=${cachedImagesCount}, badDesc=${hasBadBlocketDescription}) - rescraping:`, ad_url);
+    } else {
         console.log('Cache expired for:', ad_url, `(${daysSinceUpdate.toFixed(1)} days old)`);
       }
     }
@@ -267,7 +269,7 @@ function parseAdDetails(
   // Extract description with source-specific cleaning
   let description: string;
   if (sourceType === 'blocket') {
-    description = extractBlocketDescription(markdown);
+    description = extractBlocketDescription(markdown, html);
   } else if (sourceType === 'gearloop') {
     // For Gearloop, extract from HTML to get clean description
     description = extractGearloopDescriptionFromHtml(html);
@@ -688,19 +690,217 @@ function extractMusikborsenLocation(markdown: string): string {
   return extractLocation(markdown);
 }
 
-// Blocket-specific description extraction
-function extractBlocketDescription(markdown: string): string {
+// Check if a Blocket description looks like UI garbage instead of real ad content
+function looksLikeBadBlocketDescription(description: string): boolean {
+  if (!description || description.length < 10) return true;
+  if (description === 'Ingen beskrivning tillgänglig') return true;
+  
+  // Check for common UI markers that indicate we scraped wrong content
+  const badMarkers = [
+    'Torget/',
+    'Villkor',
+    'Information och inspiration',
+    'HouseBlocket',
+    'Instagram-logotyp',
+    'YouTube-logotyp',
+    'Facebook-logotyp',
+    'Gå till annonsen',
+    'Om Blocket',
+    'Kontakta oss',
+    'Bell',
+    'Chevron',
+    'Person silhouette',
+    'Checklist checkmark',
+    'En del av Vend',
+    'upphovsrättslagen',
+    'Logga in',
+    'Notiser',
+    'Meddelanden',
+    'Du kanske också gillar',
+    'Liknande annonser',
+  ];
+  
+  // If description contains multiple UI markers, it's bad
+  let markerCount = 0;
+  for (const marker of badMarkers) {
+    if (description.includes(marker)) {
+      markerCount++;
+      if (markerCount >= 2) {
+        console.log('Blocket: Description looks bad - contains multiple UI markers');
+        return true;
+      }
+    }
+  }
+  
+  // Check if it's mostly short lines (typical of scraped navigation)
+  const lines = description.split('\n').filter(l => l.trim());
+  const shortLines = lines.filter(l => l.length < 20);
+  if (lines.length > 5 && shortLines.length / lines.length > 0.7) {
+    console.log('Blocket: Description looks bad - mostly short lines (navigation?)');
+    return true;
+  }
+  
+  return false;
+}
+
+// Blocket-specific description extraction with JSON-LD and __NEXT_DATA__ priority
+function extractBlocketDescription(markdown: string, html: string): string {
+  console.log('Blocket: Extracting description from HTML and markdown');
+  
+  // Strategy 1: Try JSON-LD structured data (cleanest source)
+  const jsonLdDescription = extractBlocketDescriptionFromJsonLd(html);
+  if (jsonLdDescription && jsonLdDescription.length > 20 && !looksLikeBadBlocketDescription(jsonLdDescription)) {
+    console.log('Blocket: Got description from JSON-LD, length:', jsonLdDescription.length);
+    return jsonLdDescription;
+  }
+  
+  // Strategy 2: Try Next.js __NEXT_DATA__ (contains full ad data)
+  const nextDataDescription = extractBlocketDescriptionFromNextData(html);
+  if (nextDataDescription && nextDataDescription.length > 20 && !looksLikeBadBlocketDescription(nextDataDescription)) {
+    console.log('Blocket: Got description from __NEXT_DATA__, length:', nextDataDescription.length);
+    return nextDataDescription;
+  }
+  
+  // Strategy 3: Fallback to improved markdown cleaning
+  console.log('Blocket: Falling back to markdown extraction');
+  return extractBlocketDescriptionFromMarkdown(markdown);
+}
+
+// Extract description from JSON-LD structured data
+function extractBlocketDescriptionFromJsonLd(html: string): string | null {
+  if (!html) return null;
+  
+  try {
+    // Find all JSON-LD script blocks
+    const jsonLdPattern = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let match;
+    
+    while ((match = jsonLdPattern.exec(html)) !== null) {
+      try {
+        const jsonContent = match[1].trim();
+        const data = JSON.parse(jsonContent);
+        
+        // Handle both single object and array formats
+        const items = Array.isArray(data) ? data : [data];
+        
+        for (const item of items) {
+          // Look for Product or Offer type with description
+          if (item.description && typeof item.description === 'string' && item.description.length > 20) {
+            // Clean HTML entities
+            let desc = item.description
+              .replace(/&nbsp;/g, ' ')
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&#(\d+);/g, (_: string, code: string) => String.fromCharCode(parseInt(code)))
+              .trim();
+            
+            if (desc.length > 20) {
+              return desc;
+            }
+          }
+        }
+      } catch {
+        // Continue to next JSON-LD block
+        continue;
+      }
+    }
+  } catch (e) {
+    console.log('Blocket: Error parsing JSON-LD:', e);
+  }
+  
+  return null;
+}
+
+// Extract description from Next.js __NEXT_DATA__
+function extractBlocketDescriptionFromNextData(html: string): string | null {
+  if (!html) return null;
+  
+  try {
+    const nextDataPattern = /<script[^>]*id\s*=\s*["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i;
+    const match = html.match(nextDataPattern);
+    
+    if (!match) return null;
+    
+    const data = JSON.parse(match[1]);
+    
+    // Recursively search for description candidates in the nested structure
+    const candidates = findDescriptionCandidates(data, 0);
+    
+    // Sort by length (longer is usually better for descriptions)
+    candidates.sort((a, b) => b.length - a.length);
+    
+    // Return the best candidate that passes quality checks
+    for (const candidate of candidates) {
+      if (candidate.length > 50 && !looksLikeBadBlocketDescription(candidate)) {
+        return candidate;
+      }
+    }
+  } catch (e) {
+    console.log('Blocket: Error parsing __NEXT_DATA__:', e);
+  }
+  
+  return null;
+}
+
+// Recursively find description candidates in an object
+function findDescriptionCandidates(obj: unknown, depth: number): string[] {
+  const candidates: string[] = [];
+  
+  // Limit recursion depth
+  if (depth > 10) return candidates;
+  
+  if (!obj || typeof obj !== 'object') return candidates;
+  
+  // Check if this object has a description-like key
+  const descKeys = ['description', 'body', 'text', 'content', 'descriptionText'];
+  
+  for (const key of descKeys) {
+    if (key in (obj as Record<string, unknown>)) {
+      const value = (obj as Record<string, unknown>)[key];
+      if (typeof value === 'string' && value.length > 30) {
+        // Check it looks like actual content, not UI text
+        const hasMultipleWords = value.split(/\s+/).length > 5;
+        const hasSentenceStructure = /[.!?]/.test(value);
+        const noUIMarkers = !value.includes('Logga in') && !value.includes('Villkor') && !value.includes('Cookie');
+        
+        if (hasMultipleWords && hasSentenceStructure && noUIMarkers) {
+          candidates.push(value);
+        }
+      }
+    }
+  }
+  
+  // Recurse into arrays
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      candidates.push(...findDescriptionCandidates(item, depth + 1));
+    }
+  } else {
+    // Recurse into object values
+    for (const value of Object.values(obj as Record<string, unknown>)) {
+      if (value && typeof value === 'object') {
+        candidates.push(...findDescriptionCandidates(value, depth + 1));
+      }
+    }
+  }
+  
+  return candidates;
+}
+
+// Fallback: Extract from markdown with improved cleaning
+function extractBlocketDescriptionFromMarkdown(markdown: string): string {
   const lines = markdown.split('\n');
   const contentLines: string[] = [];
   
   // Blocket-specific patterns to skip
   const skipPatterns = [
     /^Gå till annonsen$/i,
-    /^Torget\//i,                              // Breadcrumb navigation
+    /^Torget\//i,
     /^Pil (vänster|höger)/i,
-    /^\(\d+\/\d+\)$/,                          // Image counter "(1/6)"
-    /^Lägg till i favoriter/i,
-    /^Lastbil i rörelse/i,                     // Shipping icon text
+    /^\(\d+\/\d+\)$/,
+    /Lägg till i favoriter/i,
+    /^Lastbil i rörelse/i,
     /^Kan skickas$/i,
     /^Köp nu/i,
     /^Skicka (meddelande|prisförslag)/i,
@@ -729,17 +929,17 @@ function extractBlocketDescription(markdown: string): string {
     /^Meddelanden$/i,
     /^Notiser$/i,
     /^Miniatyrbild$/i,
-    /^!\[/,                                     // Markdown images
-    /^Karta\d+/i,                              // "Karta19335 Sigtuna"
+    /^!\[/,
+    /^Karta\d+/i,
     /^Du måste vara inloggad/i,
     /^Visa hela beskrivningen/i,
     /^Plustecken/i,
     /^Kryss$/i,
     /^Påminn mig senare/i,
     /^Blocket har fått ett lyft/i,
-    /^Säljare$/i,                              // Seller section header
-    /^Säljaren har/i,                          // Seller info
-    /^Privat$/i,                               // Seller type
+    /^Säljare$/i,
+    /^Säljaren har/i,
+    /^Privat$/i,
     /^Omdömen$/i,
     /^Visa omdömen$/i,
     /^Svarsfrekvens:/i,
@@ -768,18 +968,19 @@ function extractBlocketDescription(markdown: string): string {
     /^Galleribildsikon$/i,
     /^Chevron/i,
     /^Pil höger$/i,
-    /^Säljes$/i,                               // Pricing labels
+    /^Säljes$/i,
     /^Bortskänkes$/i,
-    /^Du kanske också gillar/i,                // Related ads header
+    /^Du kanske också gillar/i,
     /^Visa alla$/i,
-    /^Liknande annonser$/i,
+    /^Liknande annonser/i,
     /^Fler annonser$/i,
   ];
   
   let skipRest = false;
   
   for (const line of lines) {
-    const trimmed = line.trim();
+    // Normalize: remove invisible chars, trim
+    const trimmed = line.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     if (!trimmed) continue;
     
     // Stop at related ads sections
@@ -800,7 +1001,7 @@ function extractBlocketDescription(markdown: string): string {
     // Skip prices (shown separately)
     if (/^\d[\d\s.,]*\s*kr$/i.test(trimmed)) continue;
     
-    // Skip if matches any skip pattern
+    // Skip if matches any skip pattern (more tolerant matching)
     if (skipPatterns.some(p => p.test(trimmed))) continue;
     
     // Skip headers
@@ -811,6 +1012,9 @@ function extractBlocketDescription(markdown: string): string {
     
     // Skip location lines like "Sigtuna, Uppsala län"
     if (/^[A-ZÅÄÖ][a-zåäö]+,\s*[A-ZÅÄÖ][a-zåäö]+\s+län$/i.test(trimmed)) continue;
+    
+    // Skip lines that are just numbers with prefixes (like "2Lägg till i favoriter" variants)
+    if (/^\d+[A-ZÅÄÖ]/i.test(trimmed) && trimmed.length < 30) continue;
     
     contentLines.push(trimmed);
   }
@@ -838,7 +1042,7 @@ function extractBlocketDescription(markdown: string): string {
     return 'Ingen beskrivning tillgänglig';
   }
   
-  console.log('Blocket: Extracted description, length:', desc.length);
+  console.log('Blocket: Extracted description from markdown, length:', desc.length);
   return desc;
 }
 
