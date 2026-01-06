@@ -477,13 +477,14 @@ async function preloadAdDetails(supabase: any, supabaseUrl: string, newAdUrls: S
 }
 
 // Backfill descriptions for existing ads that are missing them
-async function backfillMissingDescriptions(supabase: any, supabaseUrl: string, limit: number = 30): Promise<{ backfilled: number; failed: number }> {
-  // Find active ads with empty description
+async function backfillMissingDescriptions(supabase: any, supabaseUrl: string, limit: number = 500): Promise<{ backfilled: number; failed: number }> {
+  // Find active ads with empty description - prioritize newest first
   const { data: adsWithoutDesc, error } = await supabase
     .from('ad_listings_cache')
     .select('id, ad_url, title')
     .eq('is_active', true)
     .or('description.is.null,description.eq.')
+    .order('created_at', { ascending: false })
     .limit(limit);
 
   if (error) {
@@ -513,7 +514,7 @@ async function backfillMissingDescriptions(supabase: any, supabaseUrl: string, l
         failed++;
       }
       
-      await delay(500);
+      await delay(300);
     } catch (err) {
       console.error(`Error backfilling ${ad.ad_url}:`, err);
       failed++;
@@ -771,8 +772,8 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
     // Step 7: Backfill images for any ads that are still missing them
     const backfillResult = await backfillMissingImages(supabase, supabaseUrl, 40);
 
-    // Step 8: Backfill descriptions for ads missing them (max 30 per sync)
-    const descBackfillResult = await backfillMissingDescriptions(supabase, supabaseUrl, 30);
+    // Step 8: Backfill descriptions for ads missing them (500 per sync for aggressive backfill)
+    const descBackfillResult = await backfillMissingDescriptions(supabase, supabaseUrl, 500);
 
     const duration = Math.round((Date.now() - startTime) / 1000);
 
