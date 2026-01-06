@@ -1,25 +1,22 @@
-# Full Backfill av Beskrivningar
+# Backfill av Beskrivningar
 
-## Mål
-Öka `backfillMissingDescriptions` limit till **100 per sync-körning** (justerat från 500 för att undvika timeout).
+## Arkitektur (implementerad)
 
-## Kostnad
-- Engångskostnad: ~$5-7 (baserat på 3,357 annonser x $0.001-0.002/scrape)
-- Löpande: ~$0.05-0.10/dag för nya annonser
+### Separat Edge Function: `backfill-descriptions`
+- **Limit**: 50 annonser per körning
+- **Parallellisering**: 10 parallella scrapes via `Promise.all()`
+- **Körtid**: ~5-10 sekunder per batch (50 ads)
+- **Cron**: Varje hel timme (`0 * * * *`)
 
-## Ändringar (implementerade)
-
-### Fil: `supabase/functions/sync-ads/index.ts`
-
-1. **Limit**: 100 per körning (undviker timeout, 500 var för mycket)
-2. **Sortering**: `order('created_at', { ascending: false })` - nyast först
-3. **Delay**: 300ms mellan anrop
-4. **Loggning**: Tydlig loggning för att följa progress
+### sync-ads (rensat)
+- Hanterar **endast** nya annonser från källor
+- Beskrivnings-backfill borttagen - körs separat
 
 ## Tidsplan
-- Med ~3,380 annonser utan beskrivning = ~34 körningar = ~34 dagar
-- Nyare annonser prioriteras (visas oftare för användare)
+- 50 ads/timme × 24 timmar = **1,200 ads/dag**
+- ~3,380 annonser utan beskrivning = **~3 dagar** att slutföra
 
 ## Status
-- ✅ Implementerat
-- Synken körs dagligen och fyller automatiskt på beskrivningar
+- ✅ `backfill-descriptions` skapad och deployad
+- ✅ Cron-jobb schemalagt (varje timme)
+- ✅ `sync-ads` uppdaterad (backfill borttagen)
