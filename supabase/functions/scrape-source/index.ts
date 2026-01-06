@@ -884,45 +884,75 @@ async function scrapeSource(
       console.log(`Jam.se: Fetching subcategory "${subcat.name}" from ${subcat.url}`);
       
       try {
-        const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${firecrawlApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            url: subcat.url,
-            formats: ['html'],
-            // Jam.se is heavily JS-driven and uses client-side filtering; force browser actions
-            // so the correct subcategory content actually loads.
-            actions: [
-              { type: 'wait', milliseconds: 1500 },
-              { type: 'click', selector: '#consentNecessaryButton' },
-              { type: 'wait', milliseconds: 2500 },
-              { type: 'scroll', direction: 'down' },
-              { type: 'wait', milliseconds: 1500 },
-              { type: 'scroll', direction: 'down' },
-              { type: 'wait', milliseconds: 1500 },
-            ],
-            waitFor: 5000,
-          }),
-        });
+        let html = '';
 
-        if (!scrapeResponse.ok) {
-          const error = await scrapeResponse.text();
-          console.error(`Jam.se: Scrape failed for ${subcat.name}:`, error);
-          continue;
+        // Prefer direct fetch for Jam.se. These pages are often server-rendered,
+        // and Firecrawl can sometimes return the same cached/redirected HTML across subcategories.
+        try {
+          const directRes = await fetch(subcat.url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; LovableBot/1.0)',
+              'Accept': 'text/html,application/xhtml+xml',
+              'Accept-Language': 'sv-SE,sv;q=0.9,en;q=0.8',
+            },
+          });
+
+          if (directRes.ok) {
+            const directHtml = await directRes.text();
+            if (directHtml.includes('tws-list--list-item')) {
+              html = directHtml;
+              console.log(`Jam.se: Direct fetch OK for "${subcat.name}" (${directHtml.length} chars)`);
+            } else {
+              console.log(
+                `Jam.se: Direct fetch missing list items for "${subcat.name}" (${directHtml.length} chars), falling back to Firecrawl...`
+              );
+            }
+          } else {
+            console.log(
+              `Jam.se: Direct fetch failed for "${subcat.name}" (HTTP ${directRes.status}), falling back to Firecrawl...`
+            );
+          }
+        } catch (e) {
+          console.log(`Jam.se: Direct fetch error for "${subcat.name}", falling back to Firecrawl...`, e);
         }
 
-        const scrapeData = await scrapeResponse.json();
-        const html = scrapeData.data?.html || scrapeData.html || '';
-        
+        // Fallback to Firecrawl scrape if direct fetch did not yield parsable HTML
+        if (!html) {
+          const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${firecrawlApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url: subcat.url,
+              formats: ['html'],
+              onlyMainContent: false,
+              waitFor: 5000,
+            }),
+          });
+
+          if (!scrapeResponse.ok) {
+            const error = await scrapeResponse.text();
+            console.error(`Jam.se: Scrape failed for ${subcat.name}:`, error);
+            continue;
+          }
+
+          const scrapeData = await scrapeResponse.json();
+          html = scrapeData.data?.html || scrapeData.html || '';
+
+          const resolvedUrl = scrapeData.data?.metadata?.sourceURL || scrapeData.metadata?.sourceURL;
+          if (resolvedUrl && resolvedUrl !== subcat.url) {
+            console.log(`Jam.se: Firecrawl resolved URL for "${subcat.name}": ${resolvedUrl}`);
+          }
+        }
+
         // Parse with forced category from subcategory mapping
         const subcatProducts = parseAbicart(html, baseUrl, sourceName, subcat.name, subcat.category);
-        
+
         console.log(`Jam.se: Got ${subcatProducts.length} products from "${subcat.name}"`);
         allProducts.push(...subcatProducts);
-        
+
         // In preview mode, stop if we have enough
         if (previewLimit && allProducts.length >= previewLimit) {
           console.log(`Jam.se Preview: Got enough products (${allProducts.length}), stopping`);
