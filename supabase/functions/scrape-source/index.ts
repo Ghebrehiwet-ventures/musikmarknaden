@@ -893,7 +893,18 @@ async function scrapeSource(
           body: JSON.stringify({
             url: subcat.url,
             formats: ['html'],
-            waitFor: 3000,
+            // Jam.se is heavily JS-driven and uses client-side filtering; force browser actions
+            // so the correct subcategory content actually loads.
+            actions: [
+              { type: 'wait', milliseconds: 1500 },
+              { type: 'click', selector: '#consentNecessaryButton' },
+              { type: 'wait', milliseconds: 2500 },
+              { type: 'scroll', direction: 'down' },
+              { type: 'wait', milliseconds: 1500 },
+              { type: 'scroll', direction: 'down' },
+              { type: 'wait', milliseconds: 1500 },
+            ],
+            waitFor: 5000,
           }),
         });
 
