@@ -114,7 +114,12 @@ export async function getAdDetails(ad_url: string): Promise<AdDetails> {
   if (cached) {
     const daysSinceUpdate = (Date.now() - new Date(cached.updated_at).getTime()) / (1000 * 60 * 60 * 24);
     
-    if (daysSinceUpdate < 7) {
+    // Blocket cache bypass: if only 0-1 images, force re-scrape to get full gallery
+    const isBlocket = ad_url.includes('blocket.se');
+    const cachedImages = Array.isArray(cached.images) ? (cached.images as string[]) : [];
+    const bypassCacheForBlocket = isBlocket && cachedImages.length <= 1;
+    
+    if (daysSinceUpdate < 7 && !bypassCacheForBlocket) {
       // Return cached data immediately!
       return {
         title: cached.title || '',
@@ -122,12 +127,13 @@ export async function getAdDetails(ad_url: string): Promise<AdDetails> {
         price_text: cached.price_text,
         price_amount: cached.price_amount,
         location: cached.location || '',
-        images: (cached.images as string[]) || [],
+        images: cachedImages,
         contact_info: (cached.contact_info as { email?: string; phone?: string }) || {},
         seller: cached.seller as { name?: string; username?: string } | undefined,
         condition: cached.condition || undefined,
       };
     }
+    // If Blocket with incomplete images, fall through to re-scrape
   }
 
   // 2. Cache miss or stale - call edge function
