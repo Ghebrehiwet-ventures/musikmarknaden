@@ -11,6 +11,7 @@ export interface Ad {
   price_amount: number | null;
   image_url: string;
   source_name: string | null;
+  description?: string;
 }
 
 export interface AdDetails {
@@ -61,7 +62,7 @@ export async function fetchAdListings(): Promise<AdsResponse> {
   while (true) {
     const { data, error } = await supabase
       .from('ad_listings_cache')
-      .select('*')
+      .select('*, description')
       .eq('is_active', true)
       .order('date', { ascending: false })
       .range(from, from + pageSize - 1);
@@ -85,6 +86,7 @@ export async function fetchAdListings(): Promise<AdsResponse> {
       price_amount: row.price_amount,
       image_url: row.image_url || '',
       source_name: row.source_name,
+      description: row.description || undefined,
     }));
 
     allAds.push(...ads);
