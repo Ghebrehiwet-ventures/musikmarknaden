@@ -476,54 +476,8 @@ async function preloadAdDetails(supabase: any, supabaseUrl: string, newAdUrls: S
   return { preloaded, failed };
 }
 
-// Backfill descriptions for existing ads that are missing them
-async function backfillMissingDescriptions(supabase: any, supabaseUrl: string, limit: number = 100): Promise<{ backfilled: number; failed: number }> {
-  // Find active ads with empty description - prioritize newest first
-  const { data: adsWithoutDesc, error } = await supabase
-    .from('ad_listings_cache')
-    .select('id, ad_url, title')
-    .eq('is_active', true)
-    .or('description.is.null,description.eq.')
-    .order('created_at', { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    console.error('Failed to fetch ads without descriptions:', error);
-    return { backfilled: 0, failed: 0 };
-  }
-
-  if (!adsWithoutDesc || adsWithoutDesc.length === 0) {
-    console.log('No ads missing descriptions');
-    return { backfilled: 0, failed: 0 };
-  }
-
-  console.log(`Backfilling descriptions for ${adsWithoutDesc.length} ads...`);
-  
-  let backfilled = 0;
-  let failed = 0;
-
-  for (const ad of adsWithoutDesc) {
-    try {
-      const details = await fetchAdDetails(supabaseUrl, ad.ad_url);
-      
-      if (details && details.description && details.description.length > 20) {
-        // Description is saved by firecrawl-ad-details automatically
-        console.log(`Backfilled desc: ${ad.title.substring(0, 30)}... (${details.description.length} chars)`);
-        backfilled++;
-      } else {
-        failed++;
-      }
-      
-      await delay(300);
-    } catch (err) {
-      console.error(`Error backfilling ${ad.ad_url}:`, err);
-      failed++;
-    }
-  }
-
-  console.log(`Description backfill complete: ${backfilled} backfilled, ${failed} failed`);
-  return { backfilled, failed };
-}
+// NOTE: Description backfill has been moved to separate edge function: backfill-descriptions
+// This runs hourly via cron job with parallel processing for faster completion
 
 // AI-kategorisera nya annonser som hamnade i "other"
 async function aiCategorizeNewOtherAds(supabase: any, supabaseUrl: string, newAdUrls: Set<string>) {
@@ -772,10 +726,7 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
     // Step 7: Backfill images for any ads that are still missing them
     const backfillResult = await backfillMissingImages(supabase, supabaseUrl, 40);
 
-    // Step 8: Backfill descriptions for ads missing them (100 per sync to avoid timeout)
-    console.log('Starting description backfill (100 ads)...');
-    const descBackfillResult = await backfillMissingDescriptions(supabase, supabaseUrl, 100);
-    console.log(`Description backfill complete: ${descBackfillResult.backfilled} backfilled, ${descBackfillResult.failed} failed`);
+    // NOTE: Description backfill now runs separately via backfill-descriptions function (hourly cron)
 
     const duration = Math.round((Date.now() - startTime) / 1000);
 
@@ -803,7 +754,6 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
       aiCategorized: aiNewResult.categorized + cleanupResult.categorized,
       detailsPreloaded: preloadResult.preloaded,
       imagesBackfilled: backfillResult.backfilled,
-      descriptionsBackfilled: descBackfillResult.backfilled,
       duration: `${duration}s`,
     };
   } catch (error) {

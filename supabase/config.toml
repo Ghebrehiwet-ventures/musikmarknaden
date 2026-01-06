@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.scrape-source]
 verify_jwt = false
+
+[functions.backfill-descriptions]
+verify_jwt = false
