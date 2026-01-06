@@ -13,7 +13,37 @@ interface ScrapedProduct {
   location: string;
   image_url: string;
   category: string;
+  source_category?: string;
 }
+
+// Jam.se subcategories with their internal category mappings
+const JAM_SUBCATEGORIES: Array<{ url: string; category: string; name: string }> = [
+  { 
+    url: 'https://www.jam.se/sv/produkter/begagnat/begagnat/?count=100', 
+    category: 'synth-modular',
+    name: 'Syntar, beg/vintage'
+  },
+  { 
+    url: 'https://www.jam.se/sv/produkter/begagnat/beggatvintage/?count=100', 
+    category: 'studio',
+    name: 'Rackeffekter'
+  },
+  { 
+    url: 'https://www.jam.se/sv/produkter/studio-och-inspelning/mickar/beggatvintage/?count=100', 
+    category: 'studio',
+    name: 'Mikrofoner, beg/vintage'
+  },
+  { 
+    url: 'https://www.jam.se/sv/produkter/begagnat/begagnat-1/?count=100', 
+    category: 'pedals-effects',
+    name: 'Effektpedaler, begagnat/vintage'
+  },
+  { 
+    url: 'https://www.jam.se/sv/produkter/begagnat/ovrigt-begvintage/?count=100', 
+    category: 'other',
+    name: 'Övrigt beg/vintage'
+  },
+];
 
 function parsePrice(priceText: string): { text: string; amount: number | null } {
   const cleanText = priceText.replace(/\s+/g, ' ').trim();
@@ -496,7 +526,8 @@ function parseSefina(html: string, baseUrl: string): ScrapedProduct[] {
 }
 
 // Parse Abicart/TWS sites (Jam.se)
-function parseAbicart(html: string, baseUrl: string, siteName: string): ScrapedProduct[] {
+// Returns products with optional source_category for tracking
+function parseAbicart(html: string, baseUrl: string, siteName: string, sourceCategory?: string, forcedCategory?: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
   
   // Abicart/TWS uses <div class="tws-list--list-item col-xs-12">
@@ -536,12 +567,13 @@ function parseAbicart(html: string, baseUrl: string, siteName: string): ScrapedP
         price_amount: amount,
         location: siteName,
         image_url: imgMatch ? imgMatch[1] : '',
-        category: categorizeByKeywords(title),
+        category: forcedCategory || categorizeByKeywords(title),
+        source_category: sourceCategory,
       });
     }
   }
   
-  console.log(`Abicart parser found ${products.length} products for ${siteName}`);
+  console.log(`Abicart parser found ${products.length} products for ${siteName}${sourceCategory ? ` (${sourceCategory})` : ''}`);
   return products;
 }
 
@@ -842,6 +874,53 @@ async function scrapeSource(
     }
     
     console.log(`Blocket: Total products across ${page} pages: ${allProducts.length}`);
+  } else if (domain.includes('jam.se')) {
+    // Jam.se: Scrape all subcategories with category mapping
+    console.log(`Jam.se: Scraping ${JAM_SUBCATEGORIES.length} subcategories...`);
+    
+    for (const subcat of JAM_SUBCATEGORIES) {
+      console.log(`Jam.se: Fetching subcategory "${subcat.name}" from ${subcat.url}`);
+      
+      try {
+        const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${firecrawlApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url: subcat.url,
+            formats: ['html'],
+            waitFor: 3000,
+          }),
+        });
+
+        if (!scrapeResponse.ok) {
+          const error = await scrapeResponse.text();
+          console.error(`Jam.se: Scrape failed for ${subcat.name}:`, error);
+          continue;
+        }
+
+        const scrapeData = await scrapeResponse.json();
+        const html = scrapeData.data?.html || scrapeData.html || '';
+        
+        // Parse with forced category from subcategory mapping
+        const subcatProducts = parseAbicart(html, baseUrl, sourceName, subcat.name, subcat.category);
+        
+        console.log(`Jam.se: Got ${subcatProducts.length} products from "${subcat.name}"`);
+        allProducts.push(...subcatProducts);
+        
+        // In preview mode, stop if we have enough
+        if (previewLimit && allProducts.length >= previewLimit) {
+          console.log(`Jam.se Preview: Got enough products (${allProducts.length}), stopping`);
+          break;
+        }
+      } catch (error) {
+        console.error(`Jam.se: Error scraping ${subcat.name}:`, error);
+      }
+    }
+    
+    console.log(`Jam.se: Total products across all subcategories: ${allProducts.length}`);
   } else {
     // Single page scrape for other sources
     const { products, html, markdown } = await scrapeSinglePage(
@@ -968,6 +1047,7 @@ Deno.serve(async (req) => {
       location: product.location,
       image_url: product.image_url,
       category: product.category,
+      source_category: product.source_category || null,
       date: now.split('T')[0],
       is_active: true,
       last_seen_at: now,
