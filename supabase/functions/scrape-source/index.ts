@@ -552,7 +552,9 @@ function parseAbicart(html: string, baseUrl: string, siteName: string, sourceCat
     // Image: <img src="https://cdn.abicart.com/...">
     const imgMatch = block.match(/src="(https:\/\/cdn\.abicart\.com[^"]+)"/i);
     
-    const title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
+    // Clean title: remove ", beg" suffix that Jam.se adds to used products
+    let title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
+    title = title.replace(/,\s*beg\.?$/i, '').trim();
     const adUrl = urlMatch ? urlMatch[1] : '';
     
     if (title && adUrl) {
