@@ -499,37 +499,27 @@ function parseSefina(html: string, baseUrl: string): ScrapedProduct[] {
 function parseAbicart(html: string, baseUrl: string, siteName: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
   
-  // Abicart/TWS uses <div class="tws-list--list-item">
-  // Product structure:
-  // <div class="tws-list--list-item">
-  //   <a href="https://www.jam.se/sv/produkter/.../product.html">
-  //     <img src="https://cdn.abicart.com/..." alt="Product Name">
-  //   </a>
-  //   <p class="tws-util-heading--heading"><a>Product Name</a></p>
-  //   <span class="tws-api--price-current">1&nbsp;995&nbsp;SEK</span>
-  // </div>
+  // Abicart/TWS uses <div class="tws-list--list-item col-xs-12">
+  // Structure: the entire item block ends with </div></div></div></div>
+  // Price is in <div class="media-body"><span class="tws-api--price-current">
   
-  const productMatches = html.matchAll(
-    /<div[^>]*class="[^"]*tws-list--list-item[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/gi
-  );
-
-  for (const match of productMatches) {
-    const productHtml = match[1];
+  // Split by list-item class to get each product block
+  const productBlocks = html.split(/(?=<div[^>]*class="[^"]*tws-list--list-item[^"]*")/gi);
+  
+  for (const block of productBlocks) {
+    if (!block.includes('tws-list--list-item')) continue;
     
     // URL: <a href="https://www.jam.se/sv/produkter/...product.html">
-    const urlMatch = productHtml.match(/href="(https?:\/\/[^"]+\/produkter\/[^"]+\.html)"/i);
+    const urlMatch = block.match(/href="(https?:\/\/[^"]+\/produkter\/[^"]+\.html)"/i);
     
-    // Title: Try multiple patterns
-    // Pattern 1: <p class="tws-util-heading--heading"><a>Title</a></p>
-    // Pattern 2: <img alt="Title">
-    const titleMatch = productHtml.match(/<p[^>]*class="[^"]*tws-util-heading--heading[^"]*"[^>]*>\s*<a[^>]*>([^<]+)<\/a>/i) ||
-                       productHtml.match(/<img[^>]*alt="([^"]+)"/i);
+    // Title: <img alt="Product Name">
+    const titleMatch = block.match(/<img[^>]*alt="([^"]+)"/i);
     
-    // Price: <span class="tws-api--price-current">1&nbsp;995&nbsp;SEK</span>
-    const priceMatch = productHtml.match(/<span[^>]*class="[^"]*tws-api--price-current[^"]*"[^>]*>([^<]+)<\/span>/i);
+    // Price: <span class="tws-api--price-current twsPriceCurrent">1&nbsp;750&nbsp;SEK</span>
+    const priceMatch = block.match(/<span[^>]*class="[^"]*tws-api--price-current[^"]*"[^>]*>([^<]+)<\/span>/i);
     
     // Image: <img src="https://cdn.abicart.com/...">
-    const imgMatch = productHtml.match(/src="(https:\/\/cdn\.abicart\.com[^"]+)"/i);
+    const imgMatch = block.match(/src="(https:\/\/cdn\.abicart\.com[^"]+)"/i);
     
     const title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
     const adUrl = urlMatch ? urlMatch[1] : '';
