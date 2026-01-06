@@ -227,7 +227,10 @@ export default function AdDetails() {
     return listingsData.ads.find(a => a.ad_url === decodedUrl) || null;
   }, [id, listingsData]);
 
-  // Get full details
+  // Check if we have a cached description already (instant display)
+  const hasCachedDescription = !!ad?.description && ad.description.length > 20;
+
+  // Get full details (only if needed for images/contact or if no cached description)
   const { data: details, isLoading } = useQuery({
     queryKey: ["ad-details", ad?.ad_url],
     queryFn: () => getAdDetails(ad!.ad_url),
@@ -274,7 +277,11 @@ export default function AdDetails() {
       ? details.price_text 
       : "Pris ej angivet";
   const location = ad?.location ?? details?.location ?? "";
-  const description = details?.description ? cleanDescription(details.description, ad) : "";
+  
+  // Show cached description immediately if available, otherwise wait for details
+  const description = details?.description 
+    ? cleanDescription(details.description, ad) 
+    : (hasCachedDescription ? cleanDescription(ad!.description!, ad) : "");
 
   // Get category info
   const categoryInfo = useMemo(() => {
@@ -553,7 +560,12 @@ export default function AdDetails() {
             <div className="px-4 pb-6 lg:px-0 lg:mt-8">
               <h2 className="font-semibold text-lg text-foreground mb-3">Beskrivning</h2>
               
-              {isLoading ? (
+              {/* Show description immediately if cached, otherwise show skeleton while loading */}
+              {description ? (
+                <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                  {description}
+                </p>
+              ) : isLoading ? (
                 <div className="space-y-3">
                   <Skeleton className="h-4 w-full" />
                   <Skeleton className="h-4 w-11/12" />
@@ -570,7 +582,7 @@ export default function AdDetails() {
                 </div>
               ) : (
                 <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                  {description || "Ingen beskrivning tillgänglig."}
+                  Ingen beskrivning tillgänglig.
                 </p>
               )}
             </div>

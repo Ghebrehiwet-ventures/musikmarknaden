@@ -229,17 +229,25 @@ serve(async (req) => {
     if (firstImage || shortDescription) {
       const updateData: Record<string, string | null> = {};
       if (firstImage) updateData.image_url = firstImage;
-      if (shortDescription) updateData.description = shortDescription;
       
-      const { error: listingUpdateError } = await supabase
-        .from('ad_listings_cache')
-        .update(updateData)
-        .eq('ad_url', ad_url);
+      // Only save description if it passes quality check (not UI junk)
+      if (shortDescription && !looksLikeBadBlocketDescription(shortDescription)) {
+        updateData.description = shortDescription;
+      } else if (shortDescription) {
+        console.log('Skipping bad description for listing update:', shortDescription.substring(0, 50) + '...');
+      }
       
-      if (listingUpdateError) {
-        console.error('Failed to update listing with image/description:', listingUpdateError);
-      } else {
-        console.log('Updated listing with image:', !!firstImage, 'description:', !!shortDescription);
+      if (Object.keys(updateData).length > 0) {
+        const { error: listingUpdateError } = await supabase
+          .from('ad_listings_cache')
+          .update(updateData)
+          .eq('ad_url', ad_url);
+        
+        if (listingUpdateError) {
+          console.error('Failed to update listing with image/description:', listingUpdateError);
+        } else {
+          console.log('Updated listing with image:', !!firstImage, 'description:', !!updateData.description);
+        }
       }
     }
 
