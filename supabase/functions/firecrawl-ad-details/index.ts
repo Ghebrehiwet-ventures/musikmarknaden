@@ -1544,6 +1544,8 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
   }
   
   // 2. Extract description - AVOID cookie text, find actual product description
+  // On jam.se, the description is in the product info area BEFORE the "Beskrivning" heading
+  // The "Beskrivning" section only contains article number
   let description = '';
   
   // Bad description patterns (cookie/consent text)
@@ -1556,52 +1558,17 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
     /samtycke/i,
     /gdpr/i,
     /integritetspolicy/i,
+    /^art\.?\s*nr/i,
+    /^\d+$/,
   ];
   
   const isBadDescription = (text: string): boolean => {
+    if (!text || text.length < 20) return true;
     return badDescriptionPatterns.some(p => p.test(text));
   };
   
-  // Priority 1: Look for the "Beskrivning" section in HTML
-  // Jam.se uses a product description block after the heading "Beskrivning"
-  const beskrivningMatch = html.match(/Beskrivning<\/h[23]>\s*<\/div>\s*<div[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
-  if (beskrivningMatch) {
-    const rawDesc = beskrivningMatch[1]
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&#\d+;/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (rawDesc && rawDesc.length > 20 && !isBadDescription(rawDesc)) {
-      description = rawDesc;
-      console.log('Jam: Got description from Beskrivning section, length:', description.length);
-    }
-  }
-  
-  // Priority 2: Look for tws-textblock that ISN'T cookie text
-  if (!description) {
-    const textBlockMatches = html.matchAll(/<div[^>]*class="[^"]*tws-textblock[^"]*"[^>]*>([\s\S]*?)<\/div>/gi);
-    for (const match of textBlockMatches) {
-      const rawDesc = match[1]
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/\s+/g, ' ')
-        .trim();
-      // Only use if it's substantial and not cookie text
-      if (rawDesc && rawDesc.length > 50 && !isBadDescription(rawDesc)) {
-        description = rawDesc;
-        console.log('Jam: Got description from tws-textblock, length:', description.length);
-        break;
-      }
-    }
-  }
-  
-  // Priority 3: JSON-LD (but validate it's not cookie text)
-  if (!description && jsonLdMatch) {
+  // Priority 1: JSON-LD description (most reliable on jam.se)
+  if (jsonLdMatch) {
     try {
       const jsonLd = JSON.parse(jsonLdMatch[1]);
       if (jsonLd['@type'] === 'Product' && jsonLd.description && !isBadDescription(jsonLd.description)) {
@@ -1609,11 +1576,48 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
         console.log('Jam: Got description from JSON-LD, length:', description.length);
       }
     } catch (e) {
-      // Already logged above
+      // Will try other methods
     }
   }
   
-  // Priority 4: og:description (but validate it's not cookie text)
+  // Priority 2: Look for product description in markdown - text BEFORE "Beskrivning" or "Leverans"
+  // The product description on jam.se appears in the main product area before these sections
+  if (!description) {
+    // Look for substantial text blocks in markdown that aren't navigation/headers
+    const lines = markdown.split('\n');
+    const descriptionLines: string[] = [];
+    let foundProductSection = false;
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      
+      // Skip empty lines, headers, and navigation
+      if (!trimmedLine || trimmedLine.startsWith('#') || trimmedLine.startsWith('!')) continue;
+      if (/^[\*\-]\s/.test(trimmedLine)) continue; // Skip list items
+      if (trimmedLine.includes('Lägg i kundvagn') || trimmedLine.includes('Köp nu')) continue;
+      if (/^\[.*\]\(.*\)$/.test(trimmedLine)) continue; // Skip pure links
+      if (/^(Leverans|Beskrivning|Besökta produkter|Art\.?\s*nr)/i.test(trimmedLine)) break;
+      
+      // Look for actual description text - longer sentences about the product
+      const cleanLine = trimmedLine
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Clean markdown links
+        .replace(/\*\*/g, '')
+        .trim();
+      
+      // Description lines are typically longer and don't start with price/numbers
+      if (cleanLine.length > 40 && !isBadDescription(cleanLine) && !/^\d/.test(cleanLine)) {
+        descriptionLines.push(cleanLine);
+        foundProductSection = true;
+      }
+    }
+    
+    if (descriptionLines.length > 0) {
+      description = descriptionLines.join(' ').trim();
+      console.log('Jam: Got description from markdown text blocks, length:', description.length);
+    }
+  }
+  
+  // Priority 3: og:description
   if (!description) {
     const ogDescMatch = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
     if (ogDescMatch && !isBadDescription(ogDescMatch[1])) {
@@ -1622,25 +1626,45 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
     }
   }
   
-  // Priority 5: Extract from markdown - find text after "Beskrivning" heading
+  // Priority 4: meta description
   if (!description) {
-    const mdBeskrivningMatch = markdown.match(/##?\s*Beskrivning\s*\n+([\s\S]*?)(?=\n##|\n\*\*|Besökta produkter|$)/i);
-    if (mdBeskrivningMatch) {
-      const rawDesc = mdBeskrivningMatch[1]
-        .replace(/!\[[^\]]*\]\([^)]+\)/g, '') // Remove images
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Clean links
-        .replace(/\*\*/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (rawDesc && rawDesc.length > 30 && !isBadDescription(rawDesc)) {
-        description = rawDesc;
-        console.log('Jam: Got description from markdown Beskrivning section');
+    const metaDescMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i);
+    if (metaDescMatch && !isBadDescription(metaDescMatch[1])) {
+      description = metaDescMatch[1];
+      console.log('Jam: Got description from meta description');
+    }
+  }
+  
+  // Priority 5: Look for tws-textblock or product-description class
+  if (!description) {
+    const descPatterns = [
+      /<div[^>]*class="[^"]*product-description[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+      /<div[^>]*class="[^"]*tws-textblock[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+      /<p[^>]*class="[^"]*description[^"]*"[^>]*>([\s\S]*?)<\/p>/gi,
+    ];
+    
+    for (const pattern of descPatterns) {
+      const matches = html.matchAll(pattern);
+      for (const match of matches) {
+        const rawDesc = match[1]
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (rawDesc && !isBadDescription(rawDesc)) {
+          description = rawDesc;
+          console.log('Jam: Got description from HTML class pattern, length:', description.length);
+          break;
+        }
       }
+      if (description) break;
     }
   }
   
   if (!description) {
     description = 'Ingen beskrivning tillgänglig';
+    console.log('Jam: No description found, using fallback');
   }
   
   // 3. Extract price
@@ -1701,63 +1725,43 @@ function extractJamImages(html: string, metadata: Record<string, unknown>): stri
   const seen = new Set<string>();
   
   console.log('Jam: Starting image extraction');
-  
-  // Extract product article ID from URL to validate images belong to THIS product
-  // Jam URLs contain article IDs like hXXXX (e.g., h1234)
-  const sourceUrl = (metadata.sourceURL as string) || '';
-  const articleIdMatch = sourceUrl.match(/\/(h\d+)\/?/i);
-  const articleId = articleIdMatch ? articleIdMatch[1].toLowerCase() : null;
-  console.log('Jam: Looking for product article ID:', articleId);
+  console.log('Jam: Source URL:', (metadata.sourceURL as string) || 'unknown');
   
   // Helper to upgrade thumbnail URLs to high-resolution
   // Jam.se image URL patterns:
   // Thumbnail: https://cdn.abicart.com/shop/23659/art13/h4866/128/194224866-origpic-abc123.png
   // Full-res:  https://cdn.abicart.com/shop/23659/art13/h4866/194224866-origpic-abc123.png
-  // The /128/, /256/, /512/ are thumbnail sizes - we want without the size folder
+  // The /128/, /256/, /512/ etc are thumbnail sizes - we want without the size folder
   const upgradeToHighRes = (url: string): string => {
     // Remove thumbnail size folder from URL path
-    // Pattern: /shop/XXXXX/art13/hXXXX/SIZE/filename -> /shop/XXXXX/art13/hXXXX/filename
+    // Pattern: /art\d+/hXXXX/SIZE/filename -> /art\d+/hXXXX/filename
     const upgraded = url.replace(/(\/art\d+\/h\d+)\/\d+\//, '$1/');
     if (upgraded !== url) {
-      console.log('Jam: Upgraded image URL from thumbnail to full-res');
+      console.log('Jam: Upgraded thumbnail to full-res:', upgraded);
     }
     return upgraded;
   };
   
-  // Helper to validate image belongs to this product
-  const isProductImage = (url: string): boolean => {
-    if (!articleId) return true; // Can't validate, accept it
-    // Check if URL contains the article ID
-    return url.toLowerCase().includes(`/${articleId}/`);
-  };
-  
-  // Helper to add image with deduplication and validation
-  const addImage = (url: string): boolean => {
+  // Helper to add image with deduplication
+  const addImage = (url: string, source: string): boolean => {
     if (!url) return false;
     
-    // Only accept cdn.abicart.com images
-    if (!url.includes('cdn.abicart.com')) return false;
+    // Skip obvious bad URLs
+    if (url.includes('no-image') || url.includes('placeholder')) return false;
+    if (url.includes('logo') || url.includes('icon')) return false;
     
     // Skip tiny thumbnails
     if (url.includes('/50/') || url.includes('/100/')) return false;
     
-    // Skip stock/placeholder images
-    if (url.includes('no-image') || url.includes('placeholder')) return false;
-    
-    // Validate it belongs to THIS product
-    if (!isProductImage(url)) {
-      console.log('Jam: Skipping image from different product:', url);
-      return false;
-    }
-    
     // Upgrade to high-res
     const highResUrl = upgradeToHighRes(url);
     
-    // Deduplicate by base URL (ignoring size variations)
-    const baseUrl = highResUrl.replace(/\/\d+\//, '/').split('?')[0];
-    if (seen.has(baseUrl)) return false;
-    seen.add(baseUrl);
+    // Deduplicate by normalized URL
+    const normalizedUrl = highResUrl.split('?')[0].toLowerCase();
+    if (seen.has(normalizedUrl)) return false;
+    seen.add(normalizedUrl);
     
+    console.log(`Jam: Added image from ${source}:`, highResUrl);
     images.push(highResUrl);
     return true;
   };
@@ -1771,55 +1775,74 @@ function extractJamImages(html: string, metadata: Record<string, unknown>): stri
         const jsonImages = Array.isArray(jsonLd.image) ? jsonLd.image : [jsonLd.image];
         for (const img of jsonImages) {
           if (typeof img === 'string') {
-            addImage(img);
+            addImage(img, 'JSON-LD');
           } else if (img?.url) {
-            addImage(img.url);
+            addImage(img.url, 'JSON-LD');
           }
         }
-        console.log('Jam: Got images from JSON-LD, count:', images.length);
       }
     } catch (e) {
       console.log('Jam: Failed to parse JSON-LD for images');
     }
   }
   
-  // Priority 2: og:image (guaranteed to be product-specific)
-  if (images.length === 0) {
-    const ogImageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i);
-    if (ogImageMatch && ogImageMatch[1].includes('cdn.abicart.com')) {
-      addImage(ogImageMatch[1]);
-      console.log('Jam: Got image from og:image');
-    }
+  // Priority 2: og:image (always product-specific)
+  const ogImageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i);
+  if (ogImageMatch) {
+    addImage(ogImageMatch[1], 'og:image');
   }
   
-  // Priority 3: Look for tws-product-image gallery container ONLY
-  // This is the main product gallery, NOT related products
+  // Priority 3: Look for tws-product-image or main product gallery
   if (images.length === 0) {
     // Match the product gallery container specifically
-    const productGalleryMatch = html.match(/<div[^>]*class="[^"]*tws-product-image[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-    if (productGalleryMatch) {
-      const galleryHtml = productGalleryMatch[1];
-      // Extract source attribute from tws-react-img divs
-      const sourceMatches = galleryHtml.matchAll(/source="(https:\/\/cdn\.abicart\.com\/shop\/[^"]+)"/gi);
-      for (const match of sourceMatches) {
-        addImage(match[1]);
+    const productGalleryPatterns = [
+      /<div[^>]*class="[^"]*tws-product-image[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+      /<div[^>]*class="[^"]*product-gallery[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+      /<div[^>]*class="[^"]*main-image[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+    ];
+    
+    for (const pattern of productGalleryPatterns) {
+      const galleryMatch = html.match(pattern);
+      if (galleryMatch) {
+        const galleryHtml = galleryMatch[1];
+        // Extract source attribute from tws-react-img divs
+        const sourceMatches = galleryHtml.matchAll(/source="([^"]+)"/gi);
+        for (const match of sourceMatches) {
+          if (match[1].includes('cdn.abicart.com')) {
+            addImage(match[1], 'tws-gallery');
+          }
+        }
+        // Also look for regular img tags
+        const imgMatches = galleryHtml.matchAll(/<img[^>]*src="([^"]+)"/gi);
+        for (const match of imgMatches) {
+          if (match[1].includes('cdn.abicart.com')) {
+            addImage(match[1], 'gallery-img');
+          }
+        }
       }
-      console.log('Jam: Got images from tws-product-image gallery');
     }
   }
   
   // Priority 4: Look for data-zoom or data-large attributes (high-res gallery images)
   if (images.length === 0) {
-    const zoomMatches = html.matchAll(/data-(?:zoom|large|big)="(https:\/\/cdn\.abicart\.com[^"]+)"/gi);
+    const zoomMatches = html.matchAll(/data-(?:zoom|large|big|src-large)="([^"]+)"/gi);
     for (const match of zoomMatches) {
-      if (addImage(match[1])) break; // Just get first valid one
+      addImage(match[1], 'data-zoom');
     }
-    console.log('Jam: Got images from data-zoom attributes, count:', images.length);
+  }
+  
+  // Priority 5: Look for any abicart CDN image with 'origpic' in the name (original pictures)
+  if (images.length === 0) {
+    const origPicMatches = html.matchAll(/https:\/\/cdn\.abicart\.com\/shop\/[^"'\s]+origpic[^"'\s]*/gi);
+    for (const match of origPicMatches) {
+      addImage(match[0], 'origpic-pattern');
+      if (images.length >= 3) break; // Cap early
+    }
   }
   
   // Cap at 5 images - if we have more, something is wrong
   if (images.length > 5) {
-    console.log(`Jam: Capping images from ${images.length} to 5 (too many = probably wrong extraction)`);
+    console.log(`Jam: Capping images from ${images.length} to 5`);
     return images.slice(0, 5);
   }
   
