@@ -1583,7 +1583,25 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
   }
 
   // Priority 2: Extract short description from HTML in the product info area.
-  // Jam.se typically shows: price -> short description -> "Leverans:".
+  // Jam.se structure: price (e.g. "4 995 SEK") -> short desc (e.g. "Bra skick") -> "Leverans:"
+  // The description is often just a few words like "Bra skick", "Nyskick", "Fint skick"
+  if (!description) {
+    // Look for common short condition descriptions that appear right after price
+    const conditionPatterns = [
+      /\b(Bra skick|Nyskick|Fint skick|Gott skick|Mycket bra skick|Använt skick|Begagnat skick|Demo|Utställningsex|B-stock)\b/i,
+    ];
+    
+    for (const pattern of conditionPatterns) {
+      const conditionMatch = html.match(pattern);
+      if (conditionMatch) {
+        description = conditionMatch[1];
+        console.log('Jam: Got condition description:', description);
+        break;
+      }
+    }
+  }
+  
+  // Priority 3: Try to extract text between price and "Leverans:" from clean HTML
   if (!description) {
     const htmlText = html
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -1594,27 +1612,31 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
       .replace(/\s+/g, ' ')
       .trim();
 
-    const priceMatch = htmlText.match(/\b\d[\d\s]*\s*(?:SEK|kr)\b/i);
+    // Find price pattern like "4 995 SEK" or "1 750 SEK"
+    const priceMatch = htmlText.match(/\b(\d[\d\s]*)\s*(SEK|kr)\b/i);
     if (priceMatch && priceMatch.index !== undefined) {
       const afterPrice = htmlText.slice(priceMatch.index + priceMatch[0].length).trim();
 
+      // Find where description ends (before "Leverans:", "Läs mer", etc.)
       const stopCandidates = [
-        afterPrice.search(/\bLeverans\b/i),
+        afterPrice.search(/\bLeverans\s*:/i),
         afterPrice.search(/\bLäs mer\b/i),
         afterPrice.search(/\bBeskrivning\b/i),
-      ].filter((i) => i >= 0);
+        afterPrice.search(/\bKöp\b/i),
+        afterPrice.search(/\bLägg i/i),
+      ].filter((i) => i > 0);
 
-      const stopIdx = stopCandidates.length > 0 ? Math.min(...stopCandidates) : Math.min(afterPrice.length, 400);
+      const stopIdx = stopCandidates.length > 0 ? Math.min(...stopCandidates) : Math.min(afterPrice.length, 200);
 
       const candidate = afterPrice
         .slice(0, stopIdx)
-        .replace(/\b(Köp|Lägg i kundvagn|Till varukorg|Dela)\b[\s\S]*/i, '')
         .replace(/\s+/g, ' ')
         .trim();
 
-      if (candidate && candidate.length <= 500 && !isBadDescription(candidate)) {
+      // Accept short descriptions (even 5 chars like "Demo")
+      if (candidate && candidate.length >= 3 && candidate.length <= 300 && !isBadDescription(candidate)) {
         description = candidate;
-        console.log('Jam: Got description from HTML near price, length:', description.length);
+        console.log('Jam: Got description from HTML near price:', description);
       }
     }
   }
