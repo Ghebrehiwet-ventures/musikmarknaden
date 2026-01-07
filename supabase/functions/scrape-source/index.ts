@@ -886,8 +886,8 @@ async function scrapeSource(
       let hasMorePages = true;
       
       while (hasMorePages && page <= maxPages) {
-        // Jam.se uses ?page=N for pagination
-        const pageUrl = page === 1 ? subcat.url : `${subcat.url}?page=${page}`;
+        // Jam.se uses ?page=N for pagination - URL already has ?count=100, so use &
+        const pageUrl = page === 1 ? subcat.url : `${subcat.url}&page=${page}`;
         console.log(`Jam.se: Fetching "${subcat.name}" page ${page} from ${pageUrl}`);
         
         try {
