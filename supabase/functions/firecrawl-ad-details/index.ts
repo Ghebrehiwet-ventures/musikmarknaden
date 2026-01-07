@@ -1543,14 +1543,68 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
     title = 'Okänd titel';
   }
   
-  // 2. Extract description from JSON-LD or product description section
+  // 2. Extract description - AVOID cookie text, find actual product description
   let description = '';
   
-  // Try JSON-LD first
-  if (jsonLdMatch) {
+  // Bad description patterns (cookie/consent text)
+  const badDescriptionPatterns = [
+    /cookie/i,
+    /webbplatsen.*använder/i,
+    /analysera trafik/i,
+    /annonsmätning/i,
+    /webbläsare/i,
+    /samtycke/i,
+    /gdpr/i,
+    /integritetspolicy/i,
+  ];
+  
+  const isBadDescription = (text: string): boolean => {
+    return badDescriptionPatterns.some(p => p.test(text));
+  };
+  
+  // Priority 1: Look for the "Beskrivning" section in HTML
+  // Jam.se uses a product description block after the heading "Beskrivning"
+  const beskrivningMatch = html.match(/Beskrivning<\/h[23]>\s*<\/div>\s*<div[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
+  if (beskrivningMatch) {
+    const rawDesc = beskrivningMatch[1]
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&#\d+;/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (rawDesc && rawDesc.length > 20 && !isBadDescription(rawDesc)) {
+      description = rawDesc;
+      console.log('Jam: Got description from Beskrivning section, length:', description.length);
+    }
+  }
+  
+  // Priority 2: Look for tws-textblock that ISN'T cookie text
+  if (!description) {
+    const textBlockMatches = html.matchAll(/<div[^>]*class="[^"]*tws-textblock[^"]*"[^>]*>([\s\S]*?)<\/div>/gi);
+    for (const match of textBlockMatches) {
+      const rawDesc = match[1]
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ')
+        .trim();
+      // Only use if it's substantial and not cookie text
+      if (rawDesc && rawDesc.length > 50 && !isBadDescription(rawDesc)) {
+        description = rawDesc;
+        console.log('Jam: Got description from tws-textblock, length:', description.length);
+        break;
+      }
+    }
+  }
+  
+  // Priority 3: JSON-LD (but validate it's not cookie text)
+  if (!description && jsonLdMatch) {
     try {
       const jsonLd = JSON.parse(jsonLdMatch[1]);
-      if (jsonLd['@type'] === 'Product' && jsonLd.description) {
+      if (jsonLd['@type'] === 'Product' && jsonLd.description && !isBadDescription(jsonLd.description)) {
         description = jsonLd.description;
         console.log('Jam: Got description from JSON-LD, length:', description.length);
       }
@@ -1559,26 +1613,29 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
     }
   }
   
-  // Fallback: extract from og:description
+  // Priority 4: og:description (but validate it's not cookie text)
   if (!description) {
     const ogDescMatch = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
-    if (ogDescMatch) {
+    if (ogDescMatch && !isBadDescription(ogDescMatch[1])) {
       description = ogDescMatch[1];
       console.log('Jam: Got description from og:description');
     }
   }
   
-  // Fallback: look for product description div
+  // Priority 5: Extract from markdown - find text after "Beskrivning" heading
   if (!description) {
-    // Jam uses tws-textblock for product descriptions
-    const descBlockMatch = html.match(/<div[^>]*class="[^"]*tws-textblock[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-    if (descBlockMatch) {
-      description = descBlockMatch[1]
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
+    const mdBeskrivningMatch = markdown.match(/##?\s*Beskrivning\s*\n+([\s\S]*?)(?=\n##|\n\*\*|Besökta produkter|$)/i);
+    if (mdBeskrivningMatch) {
+      const rawDesc = mdBeskrivningMatch[1]
+        .replace(/!\[[^\]]*\]\([^)]+\)/g, '') // Remove images
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Clean links
+        .replace(/\*\*/g, '')
         .replace(/\s+/g, ' ')
         .trim();
-      console.log('Jam: Got description from tws-textblock');
+      if (rawDesc && rawDesc.length > 30 && !isBadDescription(rawDesc)) {
+        description = rawDesc;
+        console.log('Jam: Got description from markdown Beskrivning section');
+      }
     }
   }
   
@@ -1653,14 +1710,18 @@ function extractJamImages(html: string, metadata: Record<string, unknown>): stri
   console.log('Jam: Looking for product article ID:', articleId);
   
   // Helper to upgrade thumbnail URLs to high-resolution
+  // Jam.se image URL patterns:
+  // Thumbnail: https://cdn.abicart.com/shop/23659/art13/h4866/128/194224866-origpic-abc123.png
+  // Full-res:  https://cdn.abicart.com/shop/23659/art13/h4866/194224866-origpic-abc123.png
+  // The /128/, /256/, /512/ are thumbnail sizes - we want without the size folder
   const upgradeToHighRes = (url: string): string => {
-    // Jam uses /128/ or similar for thumbnails, /origpic- for originals
-    // Pattern: cdn.abicart.com/shop/XXXXX/art13/hXXXX/XXXXXXXX-origpic-XXXXXX.png
-    if (url.includes('/128/') || url.includes('/256/') || url.includes('/512/')) {
-      // Try to get original size by removing size prefix
-      return url.replace(/\/\d+\//, '/');
+    // Remove thumbnail size folder from URL path
+    // Pattern: /shop/XXXXX/art13/hXXXX/SIZE/filename -> /shop/XXXXX/art13/hXXXX/filename
+    const upgraded = url.replace(/(\/art\d+\/h\d+)\/\d+\//, '$1/');
+    if (upgraded !== url) {
+      console.log('Jam: Upgraded image URL from thumbnail to full-res');
     }
-    return url;
+    return upgraded;
   };
   
   // Helper to validate image belongs to this product
