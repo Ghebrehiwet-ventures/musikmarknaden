@@ -877,89 +877,117 @@ async function scrapeSource(
     
     console.log(`Blocket: Total products across ${page} pages: ${allProducts.length}`);
   } else if (domain.includes('jam.se')) {
-    // Jam.se: Scrape all subcategories with category mapping
-    console.log(`Jam.se: Scraping ${JAM_SUBCATEGORIES.length} subcategories...`);
+    // Jam.se: Scrape all subcategories with pagination
+    console.log(`Jam.se: Scraping ${JAM_SUBCATEGORIES.length} subcategories with pagination...`);
     
     for (const subcat of JAM_SUBCATEGORIES) {
-      console.log(`Jam.se: Fetching subcategory "${subcat.name}" from ${subcat.url}`);
+      let page = 1;
+      const maxPages = 50; // Safety limit
+      let hasMorePages = true;
       
-      try {
-        let html = '';
-
-        // Prefer direct fetch for Jam.se. These pages are often server-rendered,
-        // and Firecrawl can sometimes return the same cached/redirected HTML across subcategories.
+      while (hasMorePages && page <= maxPages) {
+        // Jam.se uses ?page=N for pagination
+        const pageUrl = page === 1 ? subcat.url : `${subcat.url}?page=${page}`;
+        console.log(`Jam.se: Fetching "${subcat.name}" page ${page} from ${pageUrl}`);
+        
         try {
-          const directRes = await fetch(subcat.url, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (compatible; LovableBot/1.0)',
-              'Accept': 'text/html,application/xhtml+xml',
-              'Accept-Language': 'sv-SE,sv;q=0.9,en;q=0.8',
-            },
-          });
+          let html = '';
 
-          if (directRes.ok) {
-            const directHtml = await directRes.text();
-            if (directHtml.includes('tws-list--list-item')) {
-              html = directHtml;
-              console.log(`Jam.se: Direct fetch OK for "${subcat.name}" (${directHtml.length} chars)`);
+          // Direct fetch for Jam.se
+          try {
+            const directRes = await fetch(pageUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml',
+                'Accept-Language': 'sv-SE,sv;q=0.9,en;q=0.8',
+              },
+            });
+
+            if (directRes.ok) {
+              html = await directRes.text();
+              console.log(`Jam.se: Direct fetch OK for "${subcat.name}" page ${page} (${html.length} chars)`);
             } else {
-              console.log(
-                `Jam.se: Direct fetch missing list items for "${subcat.name}" (${directHtml.length} chars), falling back to Firecrawl...`
-              );
+              console.log(`Jam.se: Direct fetch failed (HTTP ${directRes.status}), trying Firecrawl...`);
             }
+          } catch (e) {
+            console.log(`Jam.se: Direct fetch error, trying Firecrawl...`, e);
+          }
+
+          // Fallback to Firecrawl
+          if (!html || html.length < 1000) {
+            const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${firecrawlApiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                url: pageUrl,
+                formats: ['html'],
+                onlyMainContent: false,
+                waitFor: 3000,
+              }),
+            });
+
+            if (scrapeResponse.ok) {
+              const scrapeData = await scrapeResponse.json();
+              html = scrapeData.data?.html || scrapeData.html || '';
+            }
+          }
+
+          if (!html) {
+            console.log(`Jam.se: No HTML for "${subcat.name}" page ${page}, stopping pagination`);
+            break;
+          }
+
+          // Parse products from this page
+          const pageProducts = parseAbicart(html, baseUrl, sourceName, subcat.name, subcat.category);
+          console.log(`Jam.se: Got ${pageProducts.length} products from "${subcat.name}" page ${page}`);
+          
+          if (pageProducts.length === 0) {
+            // No products on this page = end of pagination
+            hasMorePages = false;
           } else {
-            console.log(
-              `Jam.se: Direct fetch failed for "${subcat.name}" (HTTP ${directRes.status}), falling back to Firecrawl...`
-            );
-          }
-        } catch (e) {
-          console.log(`Jam.se: Direct fetch error for "${subcat.name}", falling back to Firecrawl...`, e);
-        }
-
-        // Fallback to Firecrawl scrape if direct fetch did not yield parsable HTML
-        if (!html) {
-          const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${firecrawlApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              url: subcat.url,
-              formats: ['html'],
-              onlyMainContent: false,
-              waitFor: 5000,
-            }),
-          });
-
-          if (!scrapeResponse.ok) {
-            const error = await scrapeResponse.text();
-            console.error(`Jam.se: Scrape failed for ${subcat.name}:`, error);
-            continue;
+            allProducts.push(...pageProducts);
+            
+            // Check for pagination indicator (e.g., "1/19" or next page link)
+            // Look for pattern like "page=N" or pagination links
+            const hasNextPageLink = html.includes(`page=${page + 1}`) || 
+                                    html.includes(`?page=${page + 1}`) ||
+                                    html.includes(`sida ${page + 1}`) ||
+                                    (html.match(/(\d+)\s*\/\s*(\d+)/) && (() => {
+                                      const match = html.match(/(\d+)\s*\/\s*(\d+)/);
+                                      if (match) {
+                                        const current = parseInt(match[1]);
+                                        const total = parseInt(match[2]);
+                                        return current < total;
+                                      }
+                                      return false;
+                                    })());
+            
+            if (!hasNextPageLink) {
+              console.log(`Jam.se: No next page indicator for "${subcat.name}", stopping at page ${page}`);
+              hasMorePages = false;
+            }
           }
 
-          const scrapeData = await scrapeResponse.json();
-          html = scrapeData.data?.html || scrapeData.html || '';
-
-          const resolvedUrl = scrapeData.data?.metadata?.sourceURL || scrapeData.metadata?.sourceURL;
-          if (resolvedUrl && resolvedUrl !== subcat.url) {
-            console.log(`Jam.se: Firecrawl resolved URL for "${subcat.name}": ${resolvedUrl}`);
+          // In preview mode, stop early
+          if (previewLimit && allProducts.length >= previewLimit) {
+            console.log(`Jam.se Preview: Got enough products (${allProducts.length}), stopping`);
+            hasMorePages = false;
+            break;
           }
+
+          page++;
+        } catch (error) {
+          console.error(`Jam.se: Error scraping ${subcat.name} page ${page}:`, error);
+          hasMorePages = false;
         }
-
-        // Parse with forced category from subcategory mapping
-        const subcatProducts = parseAbicart(html, baseUrl, sourceName, subcat.name, subcat.category);
-
-        console.log(`Jam.se: Got ${subcatProducts.length} products from "${subcat.name}"`);
-        allProducts.push(...subcatProducts);
-
-        // In preview mode, stop if we have enough
-        if (previewLimit && allProducts.length >= previewLimit) {
-          console.log(`Jam.se Preview: Got enough products (${allProducts.length}), stopping`);
-          break;
-        }
-      } catch (error) {
-        console.error(`Jam.se: Error scraping ${subcat.name}:`, error);
+      }
+      
+      // Early exit from subcategory loop if preview limit reached
+      if (previewLimit && allProducts.length >= previewLimit) {
+        break;
       }
     }
     
