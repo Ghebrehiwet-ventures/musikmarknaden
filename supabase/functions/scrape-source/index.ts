@@ -527,39 +527,67 @@ function parseSefina(html: string, baseUrl: string): ScrapedProduct[] {
 
 // Parse Abicart/TWS sites (Jam.se)
 // Returns products with optional source_category for tracking
+// Updated structure (2025): 
+//   <div class="tws-list--list-item col-xs-12 ...">
+//     <div class="grid-item">
+//       <a href="..."><img src="https://cdn.abicart.com/..."></a>
+//     </div>
+//     <div class="product-list-item-info">
+//       <p class="tws-util-heading--heading h5"><a href="URL">TITLE</a></p>
+//       <div class="media-body">
+//         <span class="tws-api--price-current">PRICE SEK</span>
+//       </div>
+//     </div>
+//   </div>
 function parseAbicart(html: string, baseUrl: string, siteName: string, sourceCategory?: string, forcedCategory?: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
-  
-  // Abicart/TWS uses <div class="tws-list--list-item col-xs-12">
-  // Structure: the entire item block ends with </div></div></div></div>
-  // Price is in <div class="media-body"><span class="tws-api--price-current">
+  const seenUrls = new Set<string>();
   
   // Split by list-item class to get each product block
   const productBlocks = html.split(/(?=<div[^>]*class="[^"]*tws-list--list-item[^"]*")/gi);
   
+  console.log(`Abicart: Found ${productBlocks.length - 1} potential product blocks`);
+  
   for (const block of productBlocks) {
     if (!block.includes('tws-list--list-item')) continue;
     
-    // URL: <a href="https://www.jam.se/sv/produkter/...product.html">
-    const urlMatch = block.match(/href="(https?:\/\/[^"]+\/produkter\/[^"]+\.html)"/i);
+    // Title and URL from heading link: <p class="tws-util-heading--heading h5"><a href="URL">TITLE</a></p>
+    const headingMatch = block.match(/<p[^>]*class="[^"]*tws-util-heading--heading[^"]*"[^>]*>\s*<a\s+href="([^"]+)"[^>]*>([^<]+)<\/a>/i);
     
-    // Title: <img alt="Product Name">
-    const titleMatch = block.match(/<img[^>]*alt="([^"]+)"/i);
+    if (!headingMatch) {
+      // Fallback: try to find any product link with .html extension
+      const fallbackMatch = block.match(/<a[^>]*href="(https?:\/\/[^"]+\/produkter\/[^"]+\.html)"[^>]*>([^<]+)<\/a>/i);
+      if (!fallbackMatch) continue;
+    }
     
-    // Price: <span class="tws-api--price-current twsPriceCurrent">1&nbsp;750&nbsp;SEK</span>
-    const priceMatch = block.match(/<span[^>]*class="[^"]*tws-api--price-current[^"]*"[^>]*>([^<]+)<\/span>/i);
+    const adUrl = headingMatch ? headingMatch[1] : '';
+    let title = headingMatch ? decodeHtmlEntities(headingMatch[2].trim()) : '';
     
-    // Image: <img src="https://cdn.abicart.com/...">
-    const imgMatch = block.match(/src="(https:\/\/cdn\.abicart\.com[^"]+)"/i);
+    // Skip if no URL or already seen
+    if (!adUrl || seenUrls.has(adUrl)) continue;
+    seenUrls.add(adUrl);
+    
+    // Skip non-product links (payment logos, etc)
+    if (title.toLowerCase().includes('brand logo') || 
+        title.toLowerCase().includes('klarna') ||
+        title.toLowerCase().includes('swish')) {
+      continue;
+    }
     
     // Clean title: remove ", beg" suffix that Jam.se adds to used products
-    let title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
     title = title.replace(/,\s*beg\.?$/i, '').trim();
-    const adUrl = urlMatch ? urlMatch[1] : '';
+    
+    // Price: <span class="tws-api--price-current">1&nbsp;750&nbsp;SEK</span>
+    const priceMatch = block.match(/<span[^>]*class="[^"]*tws-api--price-current[^"]*"[^>]*>([^<]+)<\/span>/i);
+    
+    // Image: <img src="https://cdn.abicart.com/..."> (NOT brand logos)
+    // Look for product images in grid-item section
+    const imgMatch = block.match(/<div[^>]*class="[^"]*grid-item[^"]*"[^>]*>[\s\S]*?<img[^>]*src="(https:\/\/cdn\.abicart\.com[^"]+)"/i) ||
+                     block.match(/src="(https:\/\/cdn\.abicart\.com\/shop\/[^"]+)"/i);
     
     if (title && adUrl) {
       // Clean price from &nbsp; entities
-      let priceText = priceMatch ? decodeHtmlEntities(priceMatch[1].trim()) : null;
+      const priceText = priceMatch ? decodeHtmlEntities(priceMatch[1].trim()) : null;
       const { text, amount } = priceText ? parsePrice(priceText) : { text: null, amount: null };
       
       products.push({
