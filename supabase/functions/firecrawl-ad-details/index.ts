@@ -128,7 +128,8 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         url: ad_url,
         formats,
-        onlyMainContent: false, // Get full page for better image extraction
+        // Jam pages become extremely noisy (cookie banner + category lists). Prefer main content.
+        onlyMainContent: sourceType === 'jam',
         ...(needsWait && { waitFor: waitTime }),
       }),
     });
@@ -1580,40 +1581,46 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
     }
   }
   
-  // Priority 2: Look for product description in markdown - text BEFORE "Beskrivning" or "Leverans"
-  // The product description on jam.se appears in the main product area before these sections
+  // Priority 2: Look for product description in markdown - jam.se often has a short "teaser" line near the price
+  // Example: "Stereo resonator med MIDI" (short, but valid)
   if (!description) {
-    // Look for substantial text blocks in markdown that aren't navigation/headers
-    const lines = markdown.split('\n');
-    const descriptionLines: string[] = [];
-    let foundProductSection = false;
-    
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      
-      // Skip empty lines, headers, and navigation
-      if (!trimmedLine || trimmedLine.startsWith('#') || trimmedLine.startsWith('!')) continue;
-      if (/^[\*\-]\s/.test(trimmedLine)) continue; // Skip list items
-      if (trimmedLine.includes('Lägg i kundvagn') || trimmedLine.includes('Köp nu')) continue;
-      if (/^\[.*\]\(.*\)$/.test(trimmedLine)) continue; // Skip pure links
-      if (/^(Leverans|Beskrivning|Besökta produkter|Art\.?\s*nr)/i.test(trimmedLine)) break;
-      
-      // Look for actual description text - longer sentences about the product
-      const cleanLine = trimmedLine
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Clean markdown links
+    const lines = markdown.split('\n').map(l => l.trim()).filter(Boolean);
+
+    // Find an anchor point near the product title (first occurrence)
+    const titleIndex = title && title !== 'Okänd titel'
+      ? lines.findIndex(l => l.toLowerCase().includes(title.toLowerCase().slice(0, Math.min(24, title.length)).toLowerCase()))
+      : -1;
+
+    const start = titleIndex >= 0 ? titleIndex + 1 : 0;
+    const stopRegex = /^(Läs mer\.{0,3}|Leverans|Beskrivning|Besökta produkter|Art\.?\s*nr)/i;
+
+    const candidates: string[] = [];
+
+    for (let i = start; i < Math.min(lines.length, start + 30); i++) {
+      const line = lines[i];
+
+      if (stopRegex.test(line)) break;
+      if (/^\d[\d\s.,]*\s*(sek|kr)$/i.test(line)) continue;
+      if (/^(Köp|Lägg i kundvagn|Dela)$/i.test(line)) continue;
+      if (/^\[.*\]\(.*\)$/.test(line)) continue;
+      if (line.startsWith('![')) continue;
+
+      const cleanLine = line
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
         .replace(/\*\*/g, '')
         .trim();
-      
-      // Description lines are typically longer and don't start with price/numbers
-      if (cleanLine.length > 40 && !isBadDescription(cleanLine) && !/^\d/.test(cleanLine)) {
-        descriptionLines.push(cleanLine);
-        foundProductSection = true;
+
+      if (cleanLine.length >= 15 && !isBadDescription(cleanLine) && !/^\d/.test(cleanLine)) {
+        candidates.push(cleanLine);
       }
+
+      // If we already collected a couple of lines, stop early.
+      if (candidates.join(' ').length >= 120) break;
     }
-    
-    if (descriptionLines.length > 0) {
-      description = descriptionLines.join(' ').trim();
-      console.log('Jam: Got description from markdown text blocks, length:', description.length);
+
+    if (candidates.length > 0) {
+      description = candidates.join(' ').replace(/\s+/g, ' ').trim();
+      console.log('Jam: Got description from markdown near title, length:', description.length);
     }
   }
   
@@ -1728,39 +1735,39 @@ function extractJamImages(html: string, metadata: Record<string, unknown>): stri
   console.log('Jam: Source URL:', (metadata.sourceURL as string) || 'unknown');
   
   // Helper to upgrade thumbnail URLs to high-resolution
-  // Jam.se image URL patterns:
-  // Thumbnail: https://cdn.abicart.com/shop/23659/art13/h4866/128/194224866-origpic-abc123.png
-  // Full-res:  https://cdn.abicart.com/shop/23659/art13/h4866/194224866-origpic-abc123.png
-  // The /128/, /256/, /512/ etc are thumbnail sizes - we want without the size folder
-  const upgradeToHighRes = (url: string): string => {
-    // Remove thumbnail size folder from URL path
-    // Pattern: /art\d+/hXXXX/SIZE/filename -> /art\d+/hXXXX/filename
-    const upgraded = url.replace(/(\/art\d+\/h\d+)\/\d+\//, '$1/');
-    if (upgraded !== url) {
-      console.log('Jam: Upgraded thumbnail to full-res:', upgraded);
+  // Jam.se (Abicart) image URLs often include max-width/max-height query params.
+  // Prefer the largest available size by bumping max-width/max-height.
+  const normalizeJamImageUrl = (url: string): string => {
+    const decoded = url.replace(/&amp;/g, '&');
+
+    // Strip very small sizing and request bigger assets
+    if (decoded.includes('max-width=')) {
+      return decoded
+        .replace(/max-width=\d+/i, 'max-width=1440')
+        .replace(/max-height=\d+/i, 'max-height=1440')
+        .replace(/quality=\d+/i, 'quality=80');
     }
-    return upgraded;
+
+    // Some paths use a size folder: /art13/hXXXX/128/filename -> /art13/hXXXX/filename
+    return decoded.replace(/(\/art\d+\/h\d+)\/\d+\//, '$1/');
   };
-  
+
   // Helper to add image with deduplication
   const addImage = (url: string, source: string): boolean => {
     if (!url) return false;
-    
+
     // Skip obvious bad URLs
     if (url.includes('no-image') || url.includes('placeholder')) return false;
     if (url.includes('logo') || url.includes('icon')) return false;
-    
-    // Skip tiny thumbnails
-    if (url.includes('/50/') || url.includes('/100/')) return false;
-    
-    // Upgrade to high-res
-    const highResUrl = upgradeToHighRes(url);
-    
+
+    // Upgrade/normalize to high-res
+    const highResUrl = normalizeJamImageUrl(url);
+
     // Deduplicate by normalized URL
     const normalizedUrl = highResUrl.split('?')[0].toLowerCase();
     if (seen.has(normalizedUrl)) return false;
     seen.add(normalizedUrl);
-    
+
     console.log(`Jam: Added image from ${source}:`, highResUrl);
     images.push(highResUrl);
     return true;
