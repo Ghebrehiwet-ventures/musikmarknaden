@@ -1564,8 +1564,8 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
   ];
   
   const isBadDescription = (text: string): boolean => {
-    // Jam.se "teaser" descriptions can be short (e.g. "Baserad på Juno 106.")
-    if (!text || text.length < 10) return true;
+    // Jam.se "teaser" descriptions can be very short (e.g. "Bra skick" = 9 chars)
+    if (!text || text.length < 5) return true;
     return badDescriptionPatterns.some(p => p.test(text));
   };
   
@@ -1648,7 +1648,7 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
         .replace(/\*\*/g, '')
         .trim();
 
-      if (cleanLine.length >= 10 && !isBadDescription(cleanLine) && !/^\d/.test(cleanLine)) {
+      if (cleanLine.length >= 5 && !isBadDescription(cleanLine) && !/^\d/.test(cleanLine)) {
         candidates.push(cleanLine);
       }
 
@@ -1837,6 +1837,13 @@ function extractJamImages(html: string, metadata: Record<string, unknown>): stri
 
     // Upgrade/normalize to high-res
     const highResUrl = normalizeJamImageUrl(url);
+
+    // Filter out low-resolution thumbnail images (from gallery thumbnail strips)
+    // These contain size folders like /128/, /256/, /512/
+    if (/\/(?:128|256|512)\//.test(highResUrl)) {
+      console.log(`Jam: Skipping low-res thumbnail from ${source}:`, highResUrl);
+      return false;
+    }
 
     // Only accept images that match THIS product's article path
     if (articlePath && !highResUrl.toLowerCase().includes(`/${articlePath}/`)) {
