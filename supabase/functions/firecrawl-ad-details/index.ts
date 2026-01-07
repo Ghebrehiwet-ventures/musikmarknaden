@@ -7,12 +7,13 @@ const corsHeaders = {
 };
 
 // Detect source from URL
-function getSourceType(url: string): 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'unknown' {
+function getSourceType(url: string): 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'jam' | 'unknown' {
   if (url.includes('musikborsen.se')) return 'musikborsen';
   if (url.includes('gearloop.se')) return 'gearloop';
   if (url.includes('dlxmusic.se')) return 'dlxmusic';
   if (url.includes('gear4music.se') || url.includes('gear4music.com')) return 'gear4music';
   if (url.includes('blocket.se')) return 'blocket';
+  if (url.includes('jam.se')) return 'jam';
   return 'unknown';
 }
 
@@ -270,8 +271,13 @@ function parseAdDetails(
   markdown: string, 
   html: string, 
   metadata: Record<string, unknown>,
-  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'unknown'
+  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'jam' | 'unknown'
 ) {
+  // For Jam.se, use dedicated parser
+  if (sourceType === 'jam') {
+    return parseJamAdDetails(markdown, html, metadata);
+  }
+  
   const title = (metadata.title as string)?.split(' - ')[0]?.split(' | ')[0] || extractTitle(markdown) || 'Okänd titel';
   
   // Extract description with source-specific cleaning
@@ -1464,10 +1470,218 @@ function extractImages(markdown: string, html: string, sourceType: string, adUrl
   return images;
 }
 
+// Jam.se-specific parser - uses JSON-LD and og: tags for clean extraction
+function parseJamAdDetails(markdown: string, html: string, metadata: Record<string, unknown>) {
+  console.log('Jam: Starting dedicated Jam.se parser');
+  
+  // 1. Extract title from JSON-LD or og:title (avoid cookie banner text)
+  let title = '';
+  
+  // Try JSON-LD first
+  const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+  if (jsonLdMatch) {
+    try {
+      const jsonLd = JSON.parse(jsonLdMatch[1]);
+      if (jsonLd['@type'] === 'Product' && jsonLd.name) {
+        title = jsonLd.name;
+        console.log('Jam: Got title from JSON-LD:', title);
+      }
+    } catch (e) {
+      console.log('Jam: Failed to parse JSON-LD');
+    }
+  }
+  
+  // Fallback to og:title
+  if (!title) {
+    const ogTitleMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i);
+    if (ogTitleMatch) {
+      title = ogTitleMatch[1].split(' - ')[0].split(' | ')[0];
+      console.log('Jam: Got title from og:title:', title);
+    }
+  }
+  
+  // Fallback to metadata title (but clean it)
+  if (!title && metadata.title) {
+    title = (metadata.title as string).split(' - ')[0].split(' | ')[0];
+    // Skip if it's cookie banner text
+    if (title.toLowerCase().includes('cookie') || title.toLowerCase().includes('webbsidan använder')) {
+      title = '';
+    }
+  }
+  
+  if (!title) {
+    title = 'Okänd titel';
+  }
+  
+  // 2. Extract description from JSON-LD or product description section
+  let description = '';
+  
+  // Try JSON-LD first
+  if (jsonLdMatch) {
+    try {
+      const jsonLd = JSON.parse(jsonLdMatch[1]);
+      if (jsonLd['@type'] === 'Product' && jsonLd.description) {
+        description = jsonLd.description;
+        console.log('Jam: Got description from JSON-LD, length:', description.length);
+      }
+    } catch (e) {
+      // Already logged above
+    }
+  }
+  
+  // Fallback: extract from og:description
+  if (!description) {
+    const ogDescMatch = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
+    if (ogDescMatch) {
+      description = ogDescMatch[1];
+      console.log('Jam: Got description from og:description');
+    }
+  }
+  
+  // Fallback: look for product description div
+  if (!description) {
+    // Jam uses tws-textblock for product descriptions
+    const descBlockMatch = html.match(/<div[^>]*class="[^"]*tws-textblock[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+    if (descBlockMatch) {
+      description = descBlockMatch[1]
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      console.log('Jam: Got description from tws-textblock');
+    }
+  }
+  
+  if (!description) {
+    description = 'Ingen beskrivning tillgänglig';
+  }
+  
+  // 3. Extract price
+  let priceText: string | null = null;
+  let priceAmount: number | null = null;
+  
+  // Try JSON-LD first
+  if (jsonLdMatch) {
+    try {
+      const jsonLd = JSON.parse(jsonLdMatch[1]);
+      if (jsonLd['@type'] === 'Product' && jsonLd.offers?.price) {
+        priceAmount = parseFloat(jsonLd.offers.price);
+        priceText = `${priceAmount} kr`;
+        console.log('Jam: Got price from JSON-LD:', priceText);
+      }
+    } catch (e) {
+      // Already logged above
+    }
+  }
+  
+  // Fallback to regex
+  if (!priceText) {
+    const priceMatch = markdown.match(/(\d[\d\s]*):?-?\s*kr/i);
+    if (priceMatch) {
+      priceText = `${priceMatch[1].replace(/\s/g, '')} kr`;
+      priceAmount = parseInt(priceMatch[1].replace(/\s/g, ''), 10);
+    }
+  }
+  
+  // 4. Extract location (Jam.se is a store, location is fixed)
+  const location = 'Jam.se';
+  
+  // 5. Extract images - CRITICAL: Only get THIS product's images
+  const images = extractJamImages(html, metadata);
+  
+  // 6. Contact info (Jam is a store, use store contact)
+  const contactInfo: { email?: string; phone?: string } = {};
+  // Could add jam.se store contact if needed
+  
+  console.log(`Jam: Parsed - title: "${title}", images: ${images.length}, desc length: ${description.length}`);
+  
+  return {
+    title,
+    description,
+    price_text: priceText,
+    price_amount: priceAmount,
+    location,
+    images,
+    contact_info: contactInfo,
+    seller: undefined,
+    condition: undefined,
+  };
+}
+
+// Jam.se-specific image extraction - only extract THIS product's images
+function extractJamImages(html: string, metadata: Record<string, unknown>): string[] {
+  const images: string[] = [];
+  const seen = new Set<string>();
+  
+  console.log('Jam: Starting image extraction');
+  
+  // Helper to add image with deduplication
+  const addImage = (url: string): boolean => {
+    if (!url || seen.has(url)) return false;
+    // Only accept cdn.abicart.com images
+    if (!url.includes('cdn.abicart.com')) return false;
+    // Skip tiny thumbnails
+    if (url.includes('/50/') || url.includes('/100/')) return false;
+    seen.add(url);
+    images.push(url);
+    return true;
+  };
+  
+  // Priority 1: og:image (most reliable - specific to THIS product)
+  const ogImageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i);
+  if (ogImageMatch && ogImageMatch[1].includes('cdn.abicart.com')) {
+    addImage(ogImageMatch[1]);
+    console.log('Jam: Got image from og:image');
+  }
+  
+  // Priority 2: JSON-LD Product image
+  const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+  if (jsonLdMatch) {
+    try {
+      const jsonLd = JSON.parse(jsonLdMatch[1]);
+      if (jsonLd['@type'] === 'Product' && jsonLd.image) {
+        const jsonImages = Array.isArray(jsonLd.image) ? jsonLd.image : [jsonLd.image];
+        for (const img of jsonImages) {
+          if (typeof img === 'string') {
+            addImage(img);
+          } else if (img?.url) {
+            addImage(img.url);
+          }
+        }
+        console.log('Jam: Got images from JSON-LD');
+      }
+    } catch (e) {
+      console.log('Jam: Failed to parse JSON-LD for images');
+    }
+  }
+  
+  // Priority 3: Product gallery - look for tws-product-image or similar container
+  // Only extract from product gallery section, NOT from related products
+  const productGalleryMatch = html.match(/<div[^>]*class="[^"]*tws-product-image[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+  if (productGalleryMatch) {
+    const galleryHtml = productGalleryMatch[1];
+    // Extract source attribute from tws-react-img divs
+    const sourceMatches = galleryHtml.matchAll(/source="(https:\/\/cdn\.abicart\.com\/shop\/[^"]+)"/gi);
+    for (const match of sourceMatches) {
+      addImage(match[1]);
+    }
+    console.log('Jam: Got images from product gallery');
+  }
+  
+  // Cap at 10 images to prevent gallery flooding
+  if (images.length > 10) {
+    console.log(`Jam: Capping images from ${images.length} to 10`);
+    return images.slice(0, 10);
+  }
+  
+  console.log(`Jam: Final image count: ${images.length}`);
+  return images;
+}
+
 function extractContactInfo(
   markdown: string, 
   html: string, 
-  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'unknown'
+  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'jam' | 'unknown'
 ): { email?: string; phone?: string } {
   const contactInfo: { email?: string; phone?: string } = {};
   
