@@ -581,9 +581,10 @@ function parseAbicart(html: string, baseUrl: string, siteName: string, sourceCat
     const priceMatch = block.match(/<span[^>]*class="[^"]*tws-api--price-current[^"]*"[^>]*>([^<]+)<\/span>/i);
     
     // Image: Jam.se uses a custom "source" attribute on div.tws-react-img
-    // <div class="tws-img tws-react-img" source="https://cdn.abicart.com/shop/images/...">
-    const imgMatch = block.match(/source="(https:\/\/cdn\.abicart\.com\/shop\/images\/[^"]+)"/i) ||
-                     block.match(/<img[^>]*src="(https:\/\/cdn\.abicart\.com\/shop\/images\/[^"]+)"/i);
+    // Some products use /shop/images/... others use /shop/ws13/...
+    // <div class="tws-img tws-react-img" source="https://cdn.abicart.com/shop/...">
+    const imgMatch = block.match(/source="(https:\/\/cdn\.abicart\.com\/shop\/[^"]+)"/i) ||
+                     block.match(/<img[^>]*src="(https:\/\/cdn\.abicart\.com\/shop\/[^"]+)"/i);
     
     if (title && adUrl) {
       // Clean price from &nbsp; entities
