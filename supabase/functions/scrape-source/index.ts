@@ -17,27 +17,51 @@ interface ScrapedProduct {
 }
 
 // Jam.se subcategories with their internal category mappings
+// Based on breadcrumb structure: Begagnat > [Subcategory]
 const JAM_SUBCATEGORIES: Array<{ url: string; category: string; name: string }> = [
+  // Syntar, beg/vintage -> synth-modular
   { 
     url: 'https://www.jam.se/sv/produkter/begagnat/begagnat/?count=100', 
     category: 'synth-modular',
     name: 'Syntar, beg/vintage'
   },
+  // Rackeffekter -> studio
   { 
     url: 'https://www.jam.se/sv/produkter/begagnat/beggatvintage/?count=100', 
     category: 'studio',
     name: 'Rackeffekter'
   },
+  // Mikrofoner, beg/vintage -> studio
   { 
     url: 'https://www.jam.se/sv/produkter/studio-och-inspelning/mickar/beggatvintage/?count=100', 
     category: 'studio',
     name: 'Mikrofoner, beg/vintage'
   },
+  // Effektpedaler, begagnat/vintage -> pedals-effects
   { 
     url: 'https://www.jam.se/sv/produkter/begagnat/begagnat-1/?count=100', 
     category: 'pedals-effects',
     name: 'Effektpedaler, begagnat/vintage'
   },
+  // Förstärkare, beg/vintage -> amplifiers (if exists)
+  { 
+    url: 'https://www.jam.se/sv/produkter/begagnat/forstarkare-begvintage/?count=100', 
+    category: 'amplifiers',
+    name: 'Förstärkare, beg/vintage'
+  },
+  // Pianon/Keyboards, beg/vintage -> instrument
+  { 
+    url: 'https://www.jam.se/sv/produkter/begagnat/pianon-keyboards-begvintage/?count=100', 
+    category: 'instrument',
+    name: 'Pianon/Keyboards, beg/vintage'
+  },
+  // Tillbehör, beg/vintage -> accessories-parts
+  { 
+    url: 'https://www.jam.se/sv/produkter/begagnat/tillbehor-begvintage/?count=100', 
+    category: 'accessories-parts',
+    name: 'Tillbehör, beg/vintage'
+  },
+  // Övrigt beg/vintage -> other (catch-all)
   { 
     url: 'https://www.jam.se/sv/produkter/begagnat/ovrigt-begvintage/?count=100', 
     category: 'other',
@@ -905,19 +929,22 @@ async function scrapeSource(
     }
     
     console.log(`Blocket: Total products across ${page} pages: ${allProducts.length}`);
-  } else if (domain.includes('jam.se')) {
+} else if (domain.includes('jam.se')) {
     // Jam.se: Scrape all subcategories with pagination
+    // Limit to 5 pages per subcategory to avoid memory issues (most categories have <100 used items)
     console.log(`Jam.se: Scraping ${JAM_SUBCATEGORIES.length} subcategories with pagination...`);
     
     for (const subcat of JAM_SUBCATEGORIES) {
       let page = 1;
-      const maxPages = 50; // Safety limit
+      const maxPages = previewLimit ? 1 : 5; // 5 pages max per subcategory = ~500 products max per cat
       let hasMorePages = true;
+      const seenUrlsInSubcat = new Set<string>();
+      let consecutiveDuplicates = 0;
       
       while (hasMorePages && page <= maxPages) {
         // Jam.se uses ?page=N for pagination - URL already has ?count=100, so use &
         const pageUrl = page === 1 ? subcat.url : `${subcat.url}&page=${page}`;
-        console.log(`Jam.se: Fetching "${subcat.name}" page ${page} from ${pageUrl}`);
+        console.log(`Jam.se: Fetching "${subcat.name}" page ${page}/${maxPages} from ${pageUrl}`);
         
         try {
           let html = '';
@@ -936,36 +963,18 @@ async function scrapeSource(
               html = await directRes.text();
               console.log(`Jam.se: Direct fetch OK for "${subcat.name}" page ${page} (${html.length} chars)`);
             } else {
-              console.log(`Jam.se: Direct fetch failed (HTTP ${directRes.status}), trying Firecrawl...`);
+              console.log(`Jam.se: Direct fetch failed (HTTP ${directRes.status}), skipping page`);
+              hasMorePages = false;
+              break;
             }
           } catch (e) {
-            console.log(`Jam.se: Direct fetch error, trying Firecrawl...`, e);
+            console.log(`Jam.se: Direct fetch error for "${subcat.name}" page ${page}:`, e);
+            hasMorePages = false;
+            break;
           }
 
-          // Fallback to Firecrawl
           if (!html || html.length < 1000) {
-            const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${firecrawlApiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                url: pageUrl,
-                formats: ['html'],
-                onlyMainContent: false,
-                waitFor: 3000,
-              }),
-            });
-
-            if (scrapeResponse.ok) {
-              const scrapeData = await scrapeResponse.json();
-              html = scrapeData.data?.html || scrapeData.html || '';
-            }
-          }
-
-          if (!html) {
-            console.log(`Jam.se: No HTML for "${subcat.name}" page ${page}, stopping pagination`);
+            console.log(`Jam.se: Empty or too small HTML for "${subcat.name}" page ${page}, stopping`);
             break;
           }
 
@@ -975,28 +984,39 @@ async function scrapeSource(
           
           if (pageProducts.length === 0) {
             // No products on this page = end of pagination
+            console.log(`Jam.se: No products found on page ${page}, stopping "${subcat.name}"`);
             hasMorePages = false;
           } else {
-            allProducts.push(...pageProducts);
+            // Check for duplicates - if all products are already seen, we're looping
+            let newCount = 0;
+            for (const p of pageProducts) {
+              if (!seenUrlsInSubcat.has(p.ad_url)) {
+                seenUrlsInSubcat.add(p.ad_url);
+                allProducts.push(p);
+                newCount++;
+              }
+            }
             
-            // Check for pagination indicator (e.g., "1/19" or next page link)
-            // Look for pattern like "page=N" or pagination links
-            const hasNextPageLink = html.includes(`page=${page + 1}`) || 
-                                    html.includes(`?page=${page + 1}`) ||
-                                    html.includes(`sida ${page + 1}`) ||
-                                    (html.match(/(\d+)\s*\/\s*(\d+)/) && (() => {
-                                      const match = html.match(/(\d+)\s*\/\s*(\d+)/);
-                                      if (match) {
-                                        const current = parseInt(match[1]);
-                                        const total = parseInt(match[2]);
-                                        return current < total;
-                                      }
-                                      return false;
-                                    })());
+            console.log(`Jam.se: ${newCount} new products from "${subcat.name}" page ${page}`);
             
-            if (!hasNextPageLink) {
-              console.log(`Jam.se: No next page indicator for "${subcat.name}", stopping at page ${page}`);
-              hasMorePages = false;
+            if (newCount === 0) {
+              consecutiveDuplicates++;
+              if (consecutiveDuplicates >= 2) {
+                console.log(`Jam.se: 2 pages with no new products, stopping "${subcat.name}"`);
+                hasMorePages = false;
+              }
+            } else {
+              consecutiveDuplicates = 0;
+            }
+            
+            // Check for next page only if we got new products and haven't hit limit
+            if (hasMorePages && page < maxPages) {
+              // Simple check: if we got a full page of products, likely more exist
+              // Jam.se uses count=100, so if we got <50 products, probably last page
+              if (pageProducts.length < 50) {
+                console.log(`Jam.se: Only ${pageProducts.length} products (likely last page), stopping "${subcat.name}"`);
+                hasMorePages = false;
+              }
             }
           }
 
@@ -1013,6 +1033,8 @@ async function scrapeSource(
           hasMorePages = false;
         }
       }
+      
+      console.log(`Jam.se: Finished "${subcat.name}" with ${seenUrlsInSubcat.size} products`);
       
       // Early exit from subcategory loop if preview limit reached
       if (previewLimit && allProducts.length >= previewLimit) {
@@ -1042,10 +1064,13 @@ async function scrapeSource(
     }
   }
   
-  // Deduplicate by URL
-  const uniqueProducts = Array.from(
-    new Map(allProducts.map(p => [p.ad_url, p])).values()
-  );
+  // Deduplicate by URL - keep FIRST occurrence (preserves category from specific subcategory)
+  const seenUrls = new Set<string>();
+  const uniqueProducts = allProducts.filter(p => {
+    if (seenUrls.has(p.ad_url)) return false;
+    seenUrls.add(p.ad_url);
+    return true;
+  });
   
   console.log(`Found ${uniqueProducts.length} unique products for ${sourceName}`);
   return uniqueProducts;
