@@ -272,6 +272,16 @@ export default function AdDetails() {
              /max-width=(?:12[0-8]|25[0-6]|[1-9]\d?)\b/i.test(url);
     };
 
+    // Helper to get base URL for deduplication (strip query params and normalize)
+    const getBaseUrl = (url: string): string => {
+      try {
+        const parsed = new URL(url);
+        return parsed.origin + parsed.pathname.toLowerCase();
+      } catch {
+        return url.split('?')[0].toLowerCase();
+      }
+    };
+
     const detailImages = details?.images ?? [];
     
     // Only include listing image if we have no detail images OR if it's not a thumbnail
@@ -279,12 +289,23 @@ export default function AdDetails() {
     const shouldIncludeListingImage = listingImage && 
       (detailImages.length === 0 || !isThumbnailUrl(listingImage));
     
-    const list = [
+    const allImages = [
       ...detailImages,
       ...(shouldIncludeListingImage ? [listingImage] : []),
     ].filter(Boolean);
     
-    return Array.from(new Set(list));
+    // Deduplicate by base URL (same image with different query params = same image)
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const img of allImages) {
+      const base = getBaseUrl(img);
+      if (!seen.has(base)) {
+        seen.add(base);
+        unique.push(img);
+      }
+    }
+    
+    return unique;
   }, [details?.images, ad?.image_url]);
 
   const title = ad?.title ?? details?.title ?? "Annons";
