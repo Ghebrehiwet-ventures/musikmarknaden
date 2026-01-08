@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Header } from "@/components/Header";
+import { ImageLightbox, ZoomHint } from "@/components/ImageLightbox";
 import { getAdDetails, fetchAdListings, Ad } from "@/lib/api";
 import { CATEGORIES, mapToInternalCategory } from "@/lib/categories";
 import { cn } from "@/lib/utils";
@@ -211,6 +212,7 @@ function SimilarAdsCarousel({ ads, currentAdUrl }: { ads: Ad[]; currentAdUrl: st
 export default function AdDetails() {
   const { id } = useParams<{ id: string }>();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [loadingTime, setLoadingTime] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
 
@@ -450,9 +452,10 @@ export default function AdDetails() {
           <div>
             {/* Image Gallery */}
             <div 
-              className="relative bg-secondary aspect-square lg:aspect-[4/3] lg:rounded-xl overflow-hidden"
+              className="relative bg-secondary aspect-square lg:aspect-[4/3] lg:rounded-xl overflow-hidden group cursor-pointer"
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
+              onClick={() => images.length > 0 && setLightboxOpen(true)}
             >
               {images.length > 0 ? (
                 <img
@@ -466,9 +469,15 @@ export default function AdDetails() {
                 </div>
               )}
 
+              {/* Zoom hint on hover */}
+              {images.length > 0 && <ZoomHint />}
+
               {/* Share button on mobile */}
               <button
-                onClick={handleShare}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleShare();
+                }}
                 className="lg:hidden absolute top-4 right-4 h-10 w-10 rounded-full bg-background/80 backdrop-blur flex items-center justify-center"
                 aria-label="Dela"
               >
@@ -479,14 +488,20 @@ export default function AdDetails() {
                 <>
                   {/* Desktop nav buttons */}
                   <button
-                    onClick={prevImage}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      prevImage();
+                    }}
                     className="hidden lg:flex absolute left-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-background/90 backdrop-blur items-center justify-center hover:bg-background transition-colors shadow-lg"
                     aria-label="Föregående bild"
                   >
                     <ChevronLeft className="h-6 w-6" />
                   </button>
                   <button
-                    onClick={nextImage}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      nextImage();
+                    }}
                     className="hidden lg:flex absolute right-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-background/90 backdrop-blur items-center justify-center hover:bg-background transition-colors shadow-lg"
                     aria-label="Nästa bild"
                   >
@@ -503,7 +518,10 @@ export default function AdDetails() {
                     {images.map((_, idx) => (
                       <button
                         key={idx}
-                        onClick={() => setCurrentImageIndex(idx)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentImageIndex(idx);
+                        }}
                         className={cn(
                           "h-2 w-2 rounded-full transition-colors",
                           idx === currentImageIndex 
@@ -517,6 +535,18 @@ export default function AdDetails() {
                 </>
               )}
             </div>
+
+            {/* Lightbox */}
+            <ImageLightbox
+              images={images}
+              currentIndex={currentImageIndex}
+              isOpen={lightboxOpen}
+              onClose={() => setLightboxOpen(false)}
+              onNext={nextImage}
+              onPrev={prevImage}
+              onIndexChange={setCurrentImageIndex}
+              title={title}
+            />
 
             {/* Thumbnails - Desktop only */}
             {images.length > 1 && (
