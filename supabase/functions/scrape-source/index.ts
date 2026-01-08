@@ -16,57 +16,69 @@ interface ScrapedProduct {
   source_category?: string;
 }
 
-// Jam.se subcategories with their internal category mappings
-// Based on breadcrumb structure: Begagnat > [Subcategory]
-const JAM_SUBCATEGORIES: Array<{ url: string; category: string; name: string }> = [
-  // Syntar, beg/vintage -> synth-modular
-  { 
-    url: 'https://www.jam.se/sv/produkter/begagnat/begagnat/?count=100', 
-    category: 'synth-modular',
-    name: 'Syntar, beg/vintage'
-  },
-  // Rackeffekter -> studio
-  { 
-    url: 'https://www.jam.se/sv/produkter/begagnat/beggatvintage/?count=100', 
-    category: 'studio',
-    name: 'Rackeffekter'
-  },
-  // Mikrofoner, beg/vintage -> studio
-  { 
-    url: 'https://www.jam.se/sv/produkter/studio-och-inspelning/mickar/beggatvintage/?count=100', 
-    category: 'studio',
-    name: 'Mikrofoner, beg/vintage'
-  },
-  // Effektpedaler, begagnat/vintage -> pedals-effects
-  { 
-    url: 'https://www.jam.se/sv/produkter/begagnat/begagnat-1/?count=100', 
-    category: 'pedals-effects',
-    name: 'Effektpedaler, begagnat/vintage'
-  },
-  // Förstärkare, beg/vintage -> amplifiers (if exists)
-  { 
-    url: 'https://www.jam.se/sv/produkter/begagnat/forstarkare-begvintage/?count=100', 
-    category: 'amplifiers',
-    name: 'Förstärkare, beg/vintage'
-  },
-  // Pianon/Keyboards, beg/vintage -> instrument
-  { 
-    url: 'https://www.jam.se/sv/produkter/begagnat/pianon-keyboards-begvintage/?count=100', 
-    category: 'instrument',
-    name: 'Pianon/Keyboards, beg/vintage'
-  },
-  // Tillbehör, beg/vintage -> accessories-parts
-  { 
-    url: 'https://www.jam.se/sv/produkter/begagnat/tillbehor-begvintage/?count=100', 
-    category: 'accessories-parts',
-    name: 'Tillbehör, beg/vintage'
-  },
-  // Övrigt beg/vintage -> other (catch-all)
-  { 
-    url: 'https://www.jam.se/sv/produkter/begagnat/ovrigt-begvintage/?count=100', 
-    category: 'other',
-    name: 'Övrigt beg/vintage'
-  },
+// Jam.se URL path -> category mappings
+// The product URL contains the actual category, e.g.:
+// /begagnat/begagnat/ = Syntar (synth-modular)
+// /begagnat/begagnat-1/ = Effektpedaler (pedals-effects)
+// /effektpedaler/ = Effektpedaler (pedals-effects)
+const JAM_URL_CATEGORY_MAP: Record<string, string> = {
+  // Begagnat subcategories (URL path segment)
+  'begagnat-1': 'pedals-effects',        // Effektpedaler, begagnat/vintage
+  'forstarkare-begvintage': 'amplifiers', // Förstärkare, beg/vintage
+  'pianon-keyboards-begvintage': 'instrument', // Pianon/Keyboards
+  'tillbehor-begvintage': 'accessories-parts', // Tillbehör
+  'ovrigt-begvintage': 'other',          // Övrigt
+  'beggatvintage': 'studio',             // Rackeffekter
+  'begagnat': 'synth-modular',           // Syntar (this is the default "/begagnat/begagnat/")
+  
+  // New (non-begagnat) categories
+  'effektpedaler': 'pedals-effects',
+  'synthanalogvintage': 'synth-modular',
+  'synth': 'synth-modular',
+  'digitalpianon': 'instrument',
+  'usb-och-midi-keyboards': 'instrument',
+  'studio-och-inspelning': 'studio',
+  'mickar': 'studio',
+  'live-dj-och-ljus': 'dj-live',
+  'mjukvara': 'software-computers',
+  'kablar-adaptrar': 'accessories-parts',
+  'tillbehar': 'accessories-parts',
+  'stativ': 'accessories-parts',
+  'musikinstrument': 'instrument',
+  'elgitarr': 'instrument',
+  'gitarr': 'instrument',
+};
+
+// Extract category from Jam.se product URL
+function getJamCategoryFromUrl(productUrl: string): string | null {
+  try {
+    const url = new URL(productUrl);
+    const pathParts = url.pathname.split('/').filter(p => p && p !== 'sv' && p !== 'produkter');
+    
+    // Check each path segment for a category match, starting from most specific
+    // e.g., /begagnat/begagnat-1/product.html -> check "begagnat-1" first (more specific)
+    for (let i = pathParts.length - 2; i >= 0; i--) {
+      const segment = pathParts[i].toLowerCase();
+      if (JAM_URL_CATEGORY_MAP[segment]) {
+        return JAM_URL_CATEGORY_MAP[segment];
+      }
+    }
+    
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Jam.se subcategory URLs to scrape (we still need these for discovery)
+const JAM_SUBCATEGORIES: Array<{ url: string; name: string }> = [
+  { url: 'https://www.jam.se/sv/produkter/begagnat/begagnat/?count=100', name: 'Syntar, beg/vintage' },
+  { url: 'https://www.jam.se/sv/produkter/begagnat/beggatvintage/?count=100', name: 'Rackeffekter' },
+  { url: 'https://www.jam.se/sv/produkter/begagnat/begagnat-1/?count=100', name: 'Effektpedaler, begagnat/vintage' },
+  { url: 'https://www.jam.se/sv/produkter/begagnat/forstarkare-begvintage/?count=100', name: 'Förstärkare, beg/vintage' },
+  { url: 'https://www.jam.se/sv/produkter/begagnat/pianon-keyboards-begvintage/?count=100', name: 'Pianon/Keyboards, beg/vintage' },
+  { url: 'https://www.jam.se/sv/produkter/begagnat/tillbehor-begvintage/?count=100', name: 'Tillbehör, beg/vintage' },
+  { url: 'https://www.jam.se/sv/produkter/begagnat/ovrigt-begvintage/?count=100', name: 'Övrigt beg/vintage' },
 ];
 
 function parsePrice(priceText: string): { text: string; amount: number | null } {
@@ -563,7 +575,7 @@ function parseSefina(html: string, baseUrl: string): ScrapedProduct[] {
 //       </div>
 //     </div>
 //   </div>
-function parseAbicart(html: string, baseUrl: string, siteName: string, sourceCategory?: string, forcedCategory?: string): ScrapedProduct[] {
+function parseAbicart(html: string, baseUrl: string, siteName: string, sourceCategory?: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
   const seenUrls = new Set<string>();
   
@@ -615,6 +627,11 @@ function parseAbicart(html: string, baseUrl: string, siteName: string, sourceCat
       const priceText = priceMatch ? decodeHtmlEntities(priceMatch[1].trim()) : null;
       const { text, amount } = priceText ? parsePrice(priceText) : { text: null, amount: null };
       
+      // For Jam.se: Extract category from product URL (more accurate than subcategory we're scraping)
+      // Falls back to keyword categorization if URL doesn't match known patterns
+      const urlCategory = getJamCategoryFromUrl(adUrl);
+      const category = urlCategory || categorizeByKeywords(title);
+      
       products.push({
         title,
         ad_url: adUrl,
@@ -622,7 +639,7 @@ function parseAbicart(html: string, baseUrl: string, siteName: string, sourceCat
         price_amount: amount,
         location: siteName,
         image_url: imgMatch ? imgMatch[1] : '',
-        category: forcedCategory || categorizeByKeywords(title),
+        category,
         source_category: sourceCategory,
       });
     }
@@ -979,7 +996,7 @@ async function scrapeSource(
           }
 
           // Parse products from this page
-          const pageProducts = parseAbicart(html, baseUrl, sourceName, subcat.name, subcat.category);
+          const pageProducts = parseAbicart(html, baseUrl, sourceName, subcat.name);
           console.log(`Jam.se: Got ${pageProducts.length} products from "${subcat.name}" page ${page}`);
           
           if (pageProducts.length === 0) {
