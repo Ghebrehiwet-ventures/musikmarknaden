@@ -1860,18 +1860,14 @@ function extractJamImages(html: string, metadata: Record<string, unknown>): stri
     // Decode HTML entities first for consistent checking
     const decoded = url.replace(/&amp;/g, '&');
 
-    // IMPORTANT: Check for thumbnails BEFORE normalization (on original URL)
-    // Thumbnails have size folders like /128/, /256/, /512/ or small max-width values
-    const isThumbnail = /\/(?:128|256|512)\//.test(decoded) ||
-                        /max-width=(?:12[0-8]|25[0-6]|[1-9]\d?)\b/i.test(decoded);
-    
-    if (isThumbnail) {
-      console.log(`Jam: Skipping thumbnail from ${source}:`, decoded.slice(0, 100));
-      return false;
-    }
-
     // Upgrade/normalize to high-res
     const highResUrl = normalizeJamImageUrl(decoded);
+
+    // Final safety: skip if it STILL looks like a thumbnail after normalization
+    if (/\/(?:128|256|512)\//.test(highResUrl) || /max-width=(?:12[0-8]|25[0-6]|[1-9]\d?)\b/i.test(highResUrl)) {
+      console.log(`Jam: Skipping thumbnail (post-normalize) from ${source}:`, highResUrl.slice(0, 100));
+      return false;
+    }
 
     // Only accept images that match THIS product's article path
     if (articlePath && !highResUrl.toLowerCase().includes(`/${articlePath}/`)) {
