@@ -632,13 +632,38 @@ function parseAbicart(html: string, baseUrl: string, siteName: string, sourceCat
       const urlCategory = getJamCategoryFromUrl(adUrl);
       const category = urlCategory || categorizeByKeywords(title);
       
+      // Normalize Jam.se image URL to high-res (avoid storing 128px thumbnails)
+      let imageUrl = imgMatch ? imgMatch[1] : '';
+      if (imageUrl) {
+        // Decode HTML entities
+        imageUrl = decodeHtmlEntities(imageUrl);
+        
+        // Check if this is a thumbnail (max-width <= 256 or size folder /128/, /256/)
+        const isThumbnail = /max-width=(?:12[0-8]|25[0-6]|[1-9]\d?)\b/i.test(imageUrl) ||
+                            /\/(?:128|256)\//.test(imageUrl);
+        
+        if (isThumbnail) {
+          // Don't use thumbnail - let details scraper get high-res
+          imageUrl = '';
+        } else {
+          // Upgrade to high-res: set max-width/max-height to 1440
+          imageUrl = imageUrl
+            .replace(/max-width=\d+/gi, 'max-width=1440')
+            .replace(/max-height=\d+/gi, 'max-height=1440')
+            .replace(/quality=\d+/gi, 'quality=80');
+          
+          // Also strip size folders from path
+          imageUrl = imageUrl.replace(/(\/art\d+\/h\d+)\/(?:128|256|512)\//i, '$1/');
+        }
+      }
+      
       products.push({
         title,
         ad_url: adUrl,
         price_text: text,
         price_amount: amount,
         location: siteName,
-        image_url: imgMatch ? imgMatch[1] : '',
+        image_url: imageUrl,
         category,
         source_category: sourceCategory,
       });

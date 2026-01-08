@@ -1857,15 +1857,21 @@ function extractJamImages(html: string, metadata: Record<string, unknown>): stri
     if (url.includes('no-image') || url.includes('placeholder')) return false;
     if (url.includes('logo') || url.includes('icon')) return false;
 
-    // Upgrade/normalize to high-res
-    const highResUrl = normalizeJamImageUrl(url);
+    // Decode HTML entities first for consistent checking
+    const decoded = url.replace(/&amp;/g, '&');
 
-    // Filter out low-resolution thumbnail images (from gallery thumbnail strips)
-    // These contain size folders like /128/, /256/, /512/
-    if (/\/(?:128|256|512)\//.test(highResUrl)) {
-      console.log(`Jam: Skipping low-res thumbnail from ${source}:`, highResUrl);
+    // IMPORTANT: Check for thumbnails BEFORE normalization (on original URL)
+    // Thumbnails have size folders like /128/, /256/, /512/ or small max-width values
+    const isThumbnail = /\/(?:128|256|512)\//.test(decoded) ||
+                        /max-width=(?:12[0-8]|25[0-6]|[1-9]\d?)\b/i.test(decoded);
+    
+    if (isThumbnail) {
+      console.log(`Jam: Skipping thumbnail from ${source}:`, decoded.slice(0, 100));
       return false;
     }
+
+    // Upgrade/normalize to high-res
+    const highResUrl = normalizeJamImageUrl(decoded);
 
     // Only accept images that match THIS product's article path
     if (articlePath && !highResUrl.toLowerCase().includes(`/${articlePath}/`)) {
