@@ -263,10 +263,25 @@ export default function AdDetails() {
   , [ad?.ad_url]);
 
   const images = useMemo(() => {
+    // Helper to detect thumbnail URLs (should not be shown if we have better images)
+    const isThumbnailUrl = (url: string): boolean => {
+      if (!url) return false;
+      return /\/(?:128|256)\//.test(url) || 
+             /max-width=(?:12[0-8]|25[0-6]|[1-9]\d?)\b/i.test(url);
+    };
+
+    const detailImages = details?.images ?? [];
+    
+    // Only include listing image if we have no detail images OR if it's not a thumbnail
+    const listingImage = ad?.image_url;
+    const shouldIncludeListingImage = listingImage && 
+      (detailImages.length === 0 || !isThumbnailUrl(listingImage));
+    
     const list = [
-      ...(details?.images ?? []),
-      ...(ad?.image_url ? [ad.image_url] : []),
+      ...detailImages,
+      ...(shouldIncludeListingImage ? [listingImage] : []),
     ].filter(Boolean);
+    
     return Array.from(new Set(list));
   }, [details?.images, ad?.image_url]);
 
