@@ -396,12 +396,12 @@ export default function AdDetails() {
   }, [details?.images, ad?.image_url]);
 
   const title = ad?.title ?? details?.title ?? "Annons";
-  // Prefer details price (may include sale price) over listing price
-  // Details price is scraped from the actual product page and is more accurate
-  const priceText = (details?.price_text && details?.price_amount !== null) 
-    ? details.price_text 
-    : (ad?.price_text && ad?.price_amount !== null) 
-      ? ad.price_text 
+  // Prefer listing price (ad.price_text) as it's synced more frequently
+  // Fall back to details price only if listing price is missing
+  const priceText = ad?.price_text 
+    ? ad.price_text 
+    : details?.price_text 
+      ? details.price_text 
       : "Pris ej angivet";
   const location = ad?.location ?? details?.location ?? "";
   
