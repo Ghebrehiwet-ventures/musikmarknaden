@@ -1583,21 +1583,26 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
     /consent/i,
     /varukorg/i,
     /checkout/i,
+    /trustpilot/i,
   ];
   
   const isBadText = (t: string): boolean => badPatterns.some(p => p.test(t));
   
   // 1. Extract title from JSON-LD or og:title
   let title = '';
+  let jsonLdData: Record<string, unknown> | null = null;
   
   // Try JSON-LD first
   const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
   if (jsonLdMatch) {
     try {
       const jsonLd = JSON.parse(jsonLdMatch[1]);
-      if (jsonLd['@type'] === 'Product' && jsonLd.name && !isBadText(jsonLd.name)) {
-        title = jsonLd.name;
-        console.log('WooCommerce: Got title from JSON-LD:', title);
+      if (jsonLd['@type'] === 'Product') {
+        jsonLdData = jsonLd;
+        if (jsonLd.name && !isBadText(jsonLd.name)) {
+          title = jsonLd.name;
+          console.log('WooCommerce: Got title from JSON-LD:', title);
+        }
       }
     } catch (e) {
       console.log('WooCommerce: JSON-LD parse error');
@@ -1632,19 +1637,44 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
     title = 'Okänd produkt';
   }
   
-  // 2. Extract description
+  // 2. Extract description (avoid duplicating "Beskrivning" header)
   let description = '';
   
-  // Try JSON-LD
-  if (jsonLdMatch) {
-    try {
-      const jsonLd = JSON.parse(jsonLdMatch[1]);
-      if (jsonLd['@type'] === 'Product' && jsonLd.description && !isBadText(jsonLd.description)) {
-        description = jsonLd.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        console.log('WooCommerce: Got description from JSON-LD, length:', description.length);
+  // Try WooCommerce product description tab content first (most accurate)
+  const tabDescPatterns = [
+    /<div[^>]*id="tab-description"[^>]*>([\s\S]*?)<\/div>/gi,
+    /<div[^>]*class="[^"]*woocommerce-Tabs-panel--description[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+  ];
+  
+  for (const pattern of tabDescPatterns) {
+    const matches = html.matchAll(pattern);
+    for (const match of matches) {
+      let rawDesc = match[1]
+        .replace(/<h2[^>]*>.*?<\/h2>/gi, '') // Remove "BESKRIVNING" heading
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ')
+        .trim();
+      // Remove leading "Beskrivning" if present
+      rawDesc = rawDesc.replace(/^Beskrivning\s*/i, '');
+      if (rawDesc && !isBadText(rawDesc) && rawDesc.length > 20) {
+        description = rawDesc;
+        console.log('WooCommerce: Got description from tab-description');
+        break;
       }
-    } catch (e) {
-      // Already logged
+    }
+    if (description) break;
+  }
+  
+  // Try JSON-LD
+  if (!description && jsonLdData) {
+    const jsonDesc = jsonLdData.description as string | undefined;
+    if (jsonDesc && !isBadText(jsonDesc)) {
+      let cleanDesc = jsonDesc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      cleanDesc = cleanDesc.replace(/^Beskrivning\s*/i, '');
+      description = cleanDesc;
+      console.log('WooCommerce: Got description from JSON-LD, length:', description.length);
     }
   }
   
@@ -1652,43 +1682,29 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
   if (!description) {
     const ogDescMatch = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
     if (ogDescMatch && !isBadText(ogDescMatch[1]) && ogDescMatch[1].length > 20) {
-      description = ogDescMatch[1];
+      description = ogDescMatch[1].replace(/^Beskrivning\s*/i, '');
       console.log('WooCommerce: Got description from og:description');
     }
   }
   
-  // Try meta description
+  // Try short description
   if (!description) {
-    const metaDescMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i);
-    if (metaDescMatch && !isBadText(metaDescMatch[1]) && metaDescMatch[1].length > 20) {
-      description = metaDescMatch[1];
-    }
-  }
-  
-  // Try WooCommerce product description divs
-  if (!description) {
-    const descPatterns = [
-      /<div[^>]*class="[^"]*woocommerce-product-details__short-description[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
-      /<div[^>]*class="[^"]*product-description[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
-      /<div[^>]*id="tab-description"[^>]*>([\s\S]*?)<\/div>/gi,
-    ];
-    
-    for (const pattern of descPatterns) {
-      const matches = html.matchAll(pattern);
-      for (const match of matches) {
-        const rawDesc = match[1]
+    const shortDescMatch = html.match(/<div[^>]*class="[^"]*woocommerce-product-details__short-description[^"]*"[^>]*>([\s\S]*?)<\/div>/gi);
+    if (shortDescMatch) {
+      for (const match of html.matchAll(/<div[^>]*class="[^"]*woocommerce-product-details__short-description[^"]*"[^>]*>([\s\S]*?)<\/div>/gi)) {
+        let rawDesc = match[1]
           .replace(/<[^>]+>/g, ' ')
           .replace(/&nbsp;/g, ' ')
           .replace(/&amp;/g, '&')
           .replace(/\s+/g, ' ')
           .trim();
+        rawDesc = rawDesc.replace(/^Beskrivning\s*/i, '');
         if (rawDesc && !isBadText(rawDesc) && rawDesc.length > 20) {
           description = rawDesc;
-          console.log('WooCommerce: Got description from HTML class pattern');
+          console.log('WooCommerce: Got description from short-description');
           break;
         }
       }
-      if (description) break;
     }
   }
   
@@ -1696,35 +1712,121 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
     description = 'Ingen beskrivning tillgänglig';
   }
   
-  // 3. Extract price
+  // 3. Extract specifications (from SPECIFIKATION tab)
+  let specifications = '';
+  const specPatterns = [
+    /<div[^>]*id="tab-additional_information"[^>]*>([\s\S]*?)<\/div>/gi,
+    /<div[^>]*class="[^"]*woocommerce-Tabs-panel--additional_information[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+    /<table[^>]*class="[^"]*woocommerce-product-attributes[^"]*"[^>]*>([\s\S]*?)<\/table>/gi,
+  ];
+  
+  for (const pattern of specPatterns) {
+    const matches = html.matchAll(pattern);
+    for (const match of matches) {
+      // Parse table rows
+      const tableHtml = match[1] || match[0];
+      const rows: string[] = [];
+      const rowMatches = tableHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
+      for (const rowMatch of rowMatches) {
+        const rowHtml = rowMatch[1];
+        const labelMatch = rowHtml.match(/<th[^>]*>([\s\S]*?)<\/th>/i);
+        const valueMatch = rowHtml.match(/<td[^>]*>([\s\S]*?)<\/td>/i);
+        if (labelMatch && valueMatch) {
+          const label = labelMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+          const value = valueMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
+          if (label && value && !isBadText(label) && !isBadText(value)) {
+            rows.push(`${label}: ${value}`);
+          }
+        }
+      }
+      if (rows.length > 0) {
+        specifications = rows.join('\n');
+        console.log('WooCommerce: Got specifications, rows:', rows.length);
+        break;
+      }
+    }
+    if (specifications) break;
+  }
+  
+  // Append specifications to description if found
+  if (specifications) {
+    description = description + '\n\n## Specifikationer\n' + specifications;
+  }
+  
+  // Helper to parse Swedish price format (1.999 or 1 999 = 1999, komma is decimal)
+  const parseSwedishPrice = (rawPrice: string): number => {
+    // Remove spaces and &nbsp;
+    let clean = rawPrice.replace(/\s/g, '').replace(/&nbsp;/g, '');
+    // Swedish: period is thousand separator, comma is decimal
+    // If format is like "1.999" (with period as thousand sep), remove periods
+    // If format is like "1999,50" (comma as decimal), convert to dot
+    if (clean.includes('.') && clean.includes(',')) {
+      // "1.999,50" -> "1999.50"
+      clean = clean.replace(/\./g, '').replace(',', '.');
+    } else if (clean.includes('.') && !clean.includes(',')) {
+      // "1.999" with no comma - likely thousand separator, not decimal
+      // Check: if there are exactly 3 digits after the period, it's a thousand sep
+      const parts = clean.split('.');
+      if (parts.length === 2 && parts[1].length === 3) {
+        clean = clean.replace(/\./g, ''); // "1.999" -> "1999"
+      }
+    } else if (clean.includes(',')) {
+      // "1999,50" -> "1999.50"
+      clean = clean.replace(',', '.');
+    }
+    return parseFloat(clean);
+  };
+  
+  // 4. Extract price - PRIORITIZE SALE PRICE (ins element) over regular price (del element)
   let priceText: string | null = null;
   let priceAmount: number | null = null;
   
-  // Try JSON-LD
-  if (jsonLdMatch) {
-    try {
-      const jsonLd = JSON.parse(jsonLdMatch[1]);
-      if (jsonLd['@type'] === 'Product' && jsonLd.offers?.price) {
-        priceAmount = parseFloat(jsonLd.offers.price);
-        priceText = `${priceAmount} kr`;
+  // First try to find sale price structure: <del>old</del><ins>new</ins>
+  const salePriceMatch = html.match(/<ins[^>]*>[\s\S]*?<span[^>]*class="[^"]*woocommerce-Price-amount[^"]*"[^>]*>[\s\S]*?(\d[\d\s,.]*)[\s\S]*?<\/span>[\s\S]*?<\/ins>/i);
+  if (salePriceMatch) {
+    priceAmount = parseSwedishPrice(salePriceMatch[1]);
+    if (!isNaN(priceAmount) && priceAmount > 0) {
+      priceText = `${Math.round(priceAmount)} kr`;
+      console.log('WooCommerce: Got SALE price:', priceText);
+    }
+  }
+  
+  // Fallback: check for single price element (no sale)
+  if (!priceText) {
+    // Skip prices inside <del> (old price)
+    const priceMatch = html.match(/<span[^>]*class="[^"]*woocommerce-Price-amount[^"]*"[^>]*>[\s\S]*?(\d[\d\s,.]*)[\s\S]*?<\/span>/gi);
+    if (priceMatch) {
+      // Find price NOT inside a <del> tag - check if there's only one price element
+      const allPrices: number[] = [];
+      for (const pm of priceMatch) {
+        const numMatch = pm.match(/(\d[\d\s,.]*)/);
+        if (numMatch) {
+          const val = parseSwedishPrice(numMatch[1]);
+          if (!isNaN(val) && val > 0) allPrices.push(val);
+        }
+      }
+      // If multiple prices, the LOWEST is usually the sale price
+      if (allPrices.length > 0) {
+        priceAmount = Math.min(...allPrices);
+        priceText = `${Math.round(priceAmount)} kr`;
+        console.log('WooCommerce: Got price (lowest of', allPrices.length, '):', priceText);
+      }
+    }
+  }
+  
+  // Try JSON-LD as final fallback
+  if (!priceText && jsonLdData) {
+    const offers = jsonLdData.offers as Record<string, unknown> | undefined;
+    if (offers?.price) {
+      priceAmount = parseFloat(offers.price as string);
+      if (!isNaN(priceAmount)) {
+        priceText = `${Math.round(priceAmount)} kr`;
         console.log('WooCommerce: Got price from JSON-LD:', priceText);
       }
-    } catch (e) {
-      // Already logged
     }
   }
   
-  // Fallback to WooCommerce price element
-  if (!priceText) {
-    const priceMatch = html.match(/<span[^>]*class="[^"]*woocommerce-Price-amount[^"]*"[^>]*>.*?(\d[\d\s,.]*).*?<\/span>/i);
-    if (priceMatch) {
-      const rawPrice = priceMatch[1].replace(/\s/g, '').replace(',', '.');
-      priceAmount = parseFloat(rawPrice);
-      priceText = `${priceMatch[1].trim()} kr`;
-    }
-  }
-  
-  // 4. Location - use store name from URL
+  // 5. Location - use store name from URL
   let location = '';
   const sourceUrl = (metadata.sourceURL as string) || '';
   if (sourceUrl.includes('uppsalamusikverkstad')) {
@@ -1735,13 +1837,13 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
     location = 'Webbutik';
   }
   
-  // 5. Extract images
+  // 6. Extract images
   const images = extractImages(markdown, html, 'woocommerce', sourceUrl);
   
-  // 6. Contact info (stores don't usually expose personal contact)
+  // 7. Contact info (stores don't usually expose personal contact)
   const contactInfo: { email?: string; phone?: string } = {};
   
-  console.log(`WooCommerce: Parsed - title: "${title}", images: ${images.length}, desc length: ${description.length}`);
+  console.log(`WooCommerce: Parsed - title: "${title}", price: ${priceText}, images: ${images.length}, desc length: ${description.length}`);
   
   return {
     title,
