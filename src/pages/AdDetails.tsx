@@ -124,7 +124,7 @@ function FormattedDescription({ text }: { text: string }) {
         if (isBulletList) {
           // Render as a styled list
           return (
-            <ul key={blockIndex} className="space-y-1.5 ml-4">
+            <ul key={blockIndex} className="space-y-2 pl-4 list-disc list-inside">
               {lines.map((line, lineIndex) => {
                 const cleanLine = line.trim().replace(/^•\s*/, '');
                 if (!cleanLine) return null;
