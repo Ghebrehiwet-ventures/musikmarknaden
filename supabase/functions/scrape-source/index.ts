@@ -91,17 +91,29 @@ function parsePrice(priceText: string): { text: string; amount: number | null } 
   return { text: cleanText, amount: null };
 }
 
-// Keyword-based categorization
+// Keyword-based categorization - expanded with product names that don't include brand
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   'instrument': [
+    // Guitars & brands
     'gitarr', 'guitar', 'fender', 'gibson', 'ibanez', 'epiphone', 'schecter', 'stratocaster', 'telecaster', 'les paul',
     'prs', 'paul reed smith', 'g&l', 'music man', 'suhr', 'charvel', 'jackson', 'esp', 'ltd', 'squier',
     'gretsch', 'rickenbacker', 'taylor', 'martin', 'takamine', 'yamaha fg', 'yamaha c', 'cordoba', 'godin',
     'hagström', 'hagstrom', 'larrivee', 'collings', 'santa cruz', 'guild', 'ovation', 'breedlove',
+    'aria pro', 'aria guitar', 'cort', 'washburn', 'dean', 'bc rich', 'kramer', 'evh', 'sterling',
+    // Guitar model patterns
+    'rg ', 'az ', 'sa ', 'sr ', 'btb', 'jem', 'gio ', 's520', 's570', 's670', 'rga', 'rgd', 'rgt',
+    'jazzmaster', 'jaguar', 'mustang', 'duo-sonic', 'bronco', 'musicmaster',
+    'sg ', 'sg-', 'flying v', 'explorer', 'firebird', 'es-', 'es1', 'es3',
+    // Bass
     'bas', 'bass', 'precision', 'jazz bass', 'hofner', 'stingray', 'warwick', 'sandberg', 'spector', 'lakland',
+    'dingwall', 'sadowsky', 'fodera', 'mayones', 'sire',
+    // Drums
     'trumm', 'drum', 'virvel', 'snare', 'cymbal', 'hi-hat', 'pearl', 'sonor', 'tama', 'dw', 'zildjian', 'sabian',
     'mapex', 'ludwig', 'paiste', 'meinl', 'istanbul', 'slagverk', 'percussion',
+    // Piano/Keys (non-synth)
     'piano', 'flygel', 'rhodes', 'wurlitzer', 'clavinet', 'keyboard', 'tangent',
+    'digitalpiano', 'stagepiano', 'clavinova',
+    // Wind/Strings
     'saxofon', 'trumpet', 'violin', 'cello', 'flöjt', 'klarinett', 'trombon',
     'ukulele', 'mandolin', 'banjo', 'dragspel', 'accordion', 'fiol', 'viola', 'kontrabas'
   ],
@@ -112,7 +124,9 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'fender amp', 'fender twin', 'fender deluxe', 'blues junior', 'hot rod',
     'soldano', 'bogner', 'friedman', 'diezel', 'hughes & kettner', 'randall',
     'markbass', 'hartke', 'gallien krueger', 'aguilar', 'eden',
-    'kemper', 'line 6', 'helix', 'fractal', 'axe-fx', 'neural dsp', 'quad cortex'
+    'kemper', 'line 6', 'helix', 'fractal', 'axe-fx', 'neural dsp', 'quad cortex',
+    'victory', 'matchless', 'two rock', 'tone king', 'supro', 'egnater', 'bugera',
+    'katana', 'mustang amp', 'champion', 'frontman', 'rumble', 'pathfinder'
   ],
   'pedals-effects': [
     'pedal', 'effekt', 'effect', 'drive', 'overdrive', 'distortion', 'fuzz', 'effektpedal',
@@ -120,25 +134,54 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'boss', 'mxr', 'electro-harmonix', 'ehx', 'strymon', 'eventide', 'tc electronic',
     'walrus', 'jhs', 'keeley', 'tube screamer', 'big muff', 'looper', 'multieffekt',
     'fulltone', 'earthquaker', 'chase bliss', 'meris', 'source audio',
-    'dunlop', 'cry baby', 'klon', 'tuner pedal', 'noise gate', 'compressor pedal', 'booster'
+    'dunlop', 'cry baby', 'klon', 'tuner pedal', 'noise gate', 'compressor pedal', 'booster',
+    'timeline', 'bigsky', 'mobius', 'iridium', 'deco', 'el capistan', 'flint',
+    'hx stomp', 'hx effects', 'pod go', 'gt-', 'me-', 'ms-', 'zoom ms',
+    'rat', 'ds-1', 'bd-2', 'od-', 'dd-', 'rv-', 'ce-', 'bf-', 'ph-'
   ],
   'synth-modular': [
+    // Brands
     'synth', 'synthesizer', 'moog', 'korg', 'roland', 'yamaha dx', 'prophet', 'juno', 'jupiter',
     'eurorack', 'modular', 'sequencer', 'arturia', 'nord', 'access virus', 'dave smith', 'sequential',
+    'oberheim', 'waldorf', 'novation', 'behringer synth', 'asm', 'modal', 'dreadbox',
+    // Popular synth product names (without brand in title)
     'minilogue', 'monologue', 'microkorg', 'minimoog', 'op-1', 'teenage engineering',
-    'sampler', 'mpc', 'maschine', 'elektron', 'octatrack', 'digitakt', 'digitone',
-    'analogsynt', 'polysynth', 'monosynth', 'oberheim', 'waldorf', 'hydrasynth',
-    'nord stage', 'nord electro', 'nord lead'
+    'prologue', 'wavestate', 'modwave', 'opsix', 'volca', 'monologue', 'ms-20',
+    'gaia', 'fa-06', 'fa-07', 'fa-08', 'fantom', 'jd-xi', 'jd-xa', 'system-8', 'jupiter-x', 'juno-x',
+    'sh-4d', 'mc-101', 'mc-707', 'tr-8', 'tr-8s', 'tb-03', 'se-02', 'boutique',
+    'sub 37', 'subsequent', 'grandmother', 'matriarch', 'one', 'voyager',
+    'peak', 'summit', 'rev2', 'ob-6', 'prophet-5', 'prophet-6', 'take 5',
+    'hydrasynth', 'argon8', 'cobalt8', 'sledge', 'blofeld', 'quantum', 'iridium synth',
+    'sampler', 'mpc', 'maschine', 'elektron', 'octatrack', 'digitakt', 'digitone', 'syntakt',
+    'analogsynt', 'polysynth', 'monosynth',
+    'nord stage', 'nord electro', 'nord lead', 'nord wave', 'nord piano',
+    'minifooger', 'mother-32', 'dfam', 'subharmonicon', 'werkstatt',
+    'microfreak', 'minibrute', 'matrixbrute', 'polybrute', 'keylab', 'keystep'
   ],
   'studio': [
+    // Mics & brands
     'mikrofon', 'microphone', 'neumann', 'shure', 'sennheiser', 'akg', 'rode', 'audio-technica',
+    'sm57', 'sm58', 'sm7b', 'u87', 'c414', 'at2020', 'nt1', 'nt2', 'condensator', 'kondensator',
+    'beta 52', 'beta 58', 'ksm', 'tlm', 'mk4', 'procaster', 'podmic', 'broadcaster',
+    // Interfaces & brands
     'interface', 'ljudkort', 'audio interface', 'preamp', 'kompressor', 'compressor',
-    'eq', 'equalizer', 'mixer', 'mackie', 'mixerbord',
-    'monitor', 'studiomonitor', 'focusrite', 'universal audio', 'uad', 'api', 'neve', 'ssl',
-    'scarlett', 'apollo', 'genelec', 'adam audio', 'yamaha hs', 'krk', 'jbl', 'dynaudio',
-    'sm57', 'sm58', 'u87', 'c414', 'at2020', 'nt1', 'condensator', 'kondensator',
+    'focusrite', 'universal audio', 'uad', 'api', 'neve', 'ssl',
     'audient', 'motu', 'rme', 'apogee', 'steinberg', 'presonus', 'antelope',
-    'outboard', 'channel strip', 'la-2a', '1176', 'dbx', 'distressor', 'patchbay', 'di-box'
+    // Popular interface product names
+    'scarlett', 'clarett', 'saffire', 'apollo', 'twin', 'arrow', 'volt',
+    'vocaster', 'id14', 'id22', 'id44', 'evo', 'audiobox', 'quantum', 
+    'babyface', 'fireface', 'ultralite', 'duet', 'ensemble', 'element',
+    'ur22', 'ur44', 'ur816', 'axr4',
+    // Monitors
+    'studiomonitor', 'genelec', 'adam audio', 'yamaha hs', 'krk', 'jbl lsr', 'dynaudio',
+    'rokit', 'eris', 'a7x', 'a8x', 't5v', 't7v', 'hs5', 'hs7', 'hs8',
+    // Outboard/Rack
+    'eq', 'equalizer', 'mixer', 'mackie', 'mixerbord', 'monitor',
+    'outboard', 'channel strip', 'la-2a', '1176', 'dbx', 'distressor', 'patchbay', 'di-box',
+    'warm audio', 'golden age', 'heritage audio', 'empirical labs', 'rupert neve',
+    // Other studio gear
+    'midi', 'm-audio', 'arturia interface', 'native instruments',
+    'headphone amp', 'monitor controller', 'talkback', 'studio desk'
   ],
   'dj-live': [
     'dj', 'turntable', 'skivspelare', 'cdj', 'controller', 'pioneer', 'technics', 'rane', 'serato', 'traktor',
@@ -146,7 +189,12 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'ljus', 'lighting', 'dmx', 'moving head', 'laser', 'strobe', 'fog', 'haze',
     'denon dj', 'numark', 'allen & heath', 'xone', 'djm', 'ddj', 'rekordbox',
     'in-ear', 'iem', 'monitor system', 'stagebox', 'snake', 'splitter',
-    'turbosound', 'rcf', 'qsc', 'electro-voice', 'jbl prx', 'jbl eon', 'yamaha dxr'
+    'turbosound', 'rcf', 'qsc', 'electro-voice', 'jbl prx', 'jbl eon', 'yamaha dxr',
+    // DJ product names
+    'sl-1200', 'rp-7000', 'prime', 'sc5000', 'sc6000', 'x1800',
+    'ddj-1000', 'ddj-400', 'ddj-flx', 'xdj-rx', 'xdj-xz',
+    // PA product names
+    'thump', 'srm', 'zlx', 'ekx', 'k12', 'k10', 'cf ', 'evox'
   ],
   'accessories-parts': [
     'case', 'väska', 'bag', 'gigbag', 'flightcase', 'hardcase', 'softcase',
@@ -156,7 +204,9 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'dämpare', 'mute', 'cymbalställ', 'hi-hat stand', 'snare stand',
     'noter', 'notställ', 'metronom', 'strängvinda',
     'adapter', 'power supply', 'strömförsörjning', 'isolated power',
-    'humbucker', 'single coil', 'p90', 'emg', 'seymour duncan', 'dimarzio'
+    'humbucker', 'single coil', 'p90', 'emg', 'seymour duncan', 'dimarzio',
+    'mono case', 'gator case', 'skb case', 'hiscox', 'rockcase',
+    'planet waves', "d'addario", 'ernie ball', 'elixir', 'dunlop strap'
   ]
 };
 
@@ -1178,6 +1228,113 @@ Deno.serve(async (req) => {
       ...p,
       category: categoryMap.get(p.category.toLowerCase()) || p.category,
     }));
+
+    // AI categorization for products that remain in "other" category
+    // Only run in full sync mode (not preview) to save API calls
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    if (!previewMode && lovableApiKey) {
+      const otherProducts = products.filter(p => p.category === 'other');
+      if (otherProducts.length > 0) {
+        console.log(`AI categorization: ${otherProducts.length} products in 'other' category`);
+        
+        const AI_CATEGORIES = [
+          { id: 'instrument', label: 'Instrument', examples: 'Gitarrer, basar, trummor, keyboards, blåsinstrument' },
+          { id: 'amplifiers', label: 'Förstärkare', examples: 'Gitarr/basförstärkare, Kemper, Helix' },
+          { id: 'pedals-effects', label: 'Pedaler & Effekter', examples: 'Overdrive, delay, reverb, looper' },
+          { id: 'studio', label: 'Studio', examples: 'Mikrofoner, ljudkort/interface, monitorer, preamps' },
+          { id: 'dj-live', label: 'DJ & Live', examples: 'DJ-controller, PA-system, ljusutrustning' },
+          { id: 'synth-modular', label: 'Synth & Modulärt', examples: 'Synthesizers, Eurorack, samplers' },
+          { id: 'software-computers', label: 'Mjukvara & Datorer', examples: 'DAW, plugins, datorer' },
+          { id: 'accessories-parts', label: 'Tillbehör & Delar', examples: 'Kablar, case, strängar, pickups' },
+          { id: 'services', label: 'Tjänster', examples: 'Lektioner, reparation, uthyrning' },
+          { id: 'other', label: 'Övrigt', examples: 'Noter, memorabilia' },
+        ];
+        
+        // Batch categorize in groups of 10 to reduce API calls
+        const batchSize = 10;
+        for (let i = 0; i < otherProducts.length; i += batchSize) {
+          const batch = otherProducts.slice(i, i + batchSize);
+          const titlesToCategorize = batch.map((p, idx) => `${idx + 1}. ${p.title}`).join('\n');
+          
+          try {
+            const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${lovableApiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'google/gemini-2.5-flash-lite',
+                messages: [
+                  {
+                    role: 'system',
+                    content: `Du kategoriserar musikprylar. Svara ENDAST med ett JSON-objekt med format {"results": [{"index": 1, "category": "category_id"}, ...]}.
+
+KATEGORIER:
+${AI_CATEGORIES.map(c => `- ${c.id}: ${c.label} (${c.examples})`).join('\n')}
+
+REGLER:
+- Focusrite Vocaster = studio (audio interface)
+- Roland GAIA = synth-modular
+- Ibanez AZ/RG/S = instrument (gitarr)
+- Audio interface = studio
+- Synthesizer = synth-modular
+- Allt med gitarr/bas-modellnamn = instrument`
+                  },
+                  {
+                    role: 'user',
+                    content: `Kategorisera dessa produkter:\n${titlesToCategorize}`
+                  }
+                ],
+                temperature: 0.1,
+              }),
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              const content = data.choices?.[0]?.message?.content || '';
+              
+              // Parse JSON from response
+              const jsonMatch = content.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                try {
+                  const parsed = JSON.parse(jsonMatch[0]);
+                  if (parsed.results && Array.isArray(parsed.results)) {
+                    for (const result of parsed.results) {
+                      const idx = result.index - 1;
+                      const category = result.category;
+                      if (idx >= 0 && idx < batch.length && AI_CATEGORIES.some(c => c.id === category)) {
+                        const product = batch[idx];
+                        // Find and update in main products array
+                        const mainIdx = products.findIndex(p => p.ad_url === product.ad_url);
+                        if (mainIdx >= 0 && category !== 'other') {
+                          console.log(`AI: "${product.title}" -> ${category}`);
+                          products[mainIdx].category = category;
+                        }
+                      }
+                    }
+                  }
+                } catch (parseErr) {
+                  console.error('AI response parse error:', parseErr);
+                }
+              }
+            } else {
+              console.error('AI categorization failed:', response.status);
+            }
+          } catch (aiErr) {
+            console.error('AI categorization error:', aiErr);
+          }
+          
+          // Small delay between batches to avoid rate limiting
+          if (i + batchSize < otherProducts.length) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+        
+        const remainingOther = products.filter(p => p.category === 'other').length;
+        console.log(`AI categorization complete: ${otherProducts.length - remainingOther} products recategorized, ${remainingOther} remain in 'other'`);
+      }
+    }
 
     // PREVIEW MODE: Return products without saving
     if (previewMode) {
