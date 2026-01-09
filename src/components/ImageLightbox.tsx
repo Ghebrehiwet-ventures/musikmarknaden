@@ -93,13 +93,13 @@ export function ImageLightbox({
 
       {/* Main image area */}
       <div 
-        className="flex-1 flex items-center justify-center px-4 relative"
+        className="flex-1 flex items-center justify-center p-4 relative min-h-0"
         onClick={onClose}
       >
         <img
           src={images[currentIndex]}
           alt={title || `Bild ${currentIndex + 1}`}
-          className="max-w-full max-h-full object-contain"
+          className="max-w-[90vw] max-h-[70vh] lg:max-h-[75vh] object-contain"
           onClick={(e) => e.stopPropagation()}
         />
 
