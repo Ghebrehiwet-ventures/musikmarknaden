@@ -154,6 +154,39 @@ function FormattedDescription({ text }: { text: string }) {
   );
 }
 
+// Specifications Table Component
+function SpecificationsTable({ specifications }: { specifications: Array<{ label: string; value: string }> }) {
+  if (!specifications || specifications.length === 0) return null;
+  
+  return (
+    <div className="mt-8 px-4 lg:px-0">
+      <h2 className="font-semibold text-lg text-foreground mb-3">Specifikationer</h2>
+      <div className="rounded-xl border border-border overflow-hidden">
+        <table className="w-full text-sm">
+          <tbody>
+            {specifications.map((spec, index) => (
+              <tr 
+                key={index}
+                className={cn(
+                  "border-b border-border last:border-0",
+                  index % 2 === 0 ? "bg-secondary/30" : "bg-background"
+                )}
+              >
+                <td className="px-4 py-3 font-medium text-muted-foreground w-1/3 lg:w-1/4">
+                  {spec.label}
+                </td>
+                <td className="px-4 py-3 text-foreground">
+                  {spec.value}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // Similar Ads Carousel Component
 function SimilarAdsCarousel({ ads, currentAdUrl }: { ads: Ad[]; currentAdUrl: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -709,6 +742,11 @@ export default function AdDetails() {
                 </p>
               )}
             </div>
+
+            {/* Specifications Table */}
+            {details?.specifications && details.specifications.length > 0 && (
+              <SpecificationsTable specifications={details.specifications} />
+            )}
 
             {/* Seller - Desktop */}
             {details?.seller && (details.seller.name || details.seller.username) && (

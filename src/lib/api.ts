@@ -30,6 +30,7 @@ export interface AdDetails {
     username?: string;
   };
   condition?: string;
+  specifications?: Array<{ label: string; value: string }>;
   isDeadLink?: boolean;
   error?: string;
 }
@@ -183,6 +184,7 @@ export async function getAdDetails(ad_url: string): Promise<AdDetails> {
         contact_info: (cached.contact_info as { email?: string; phone?: string }) || {},
         seller: cached.seller as { name?: string; username?: string } | undefined,
         condition: cached.condition || undefined,
+        specifications: (cached.specifications as Array<{ label: string; value: string }>) || [],
       };
     }
     // If Blocket with incomplete images, fall through to re-scrape
