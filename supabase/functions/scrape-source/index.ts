@@ -457,6 +457,36 @@ function parseDLXMusic(html: string, baseUrl: string): ScrapedProduct[] {
   return products;
 }
 
+// Check if an image URL is a WooCommerce placeholder/icon (flags, logos, etc.)
+function isWooCommercePlaceholderImage(url: string): boolean {
+  if (!url) return true;
+  const lowUrl = url.toLowerCase();
+  
+  // Flag images (country flags for shipping/origin)
+  if (lowUrl.includes('sveriges-flagga') || 
+      lowUrl.includes('flag_of_') ||
+      lowUrl.includes('/se.png') ||
+      lowUrl.includes('/dk.png') ||
+      lowUrl.includes('/no.png') ||
+      lowUrl.includes('/fi.png') ||
+      lowUrl.includes('flag-')) return true;
+  
+  // Common placeholders and icons
+  if (lowUrl.includes('placeholder') ||
+      lowUrl.includes('no-image') ||
+      lowUrl.includes('woocommerce-placeholder') ||
+      lowUrl.includes('logo') ||
+      lowUrl.includes('icon') ||
+      lowUrl.includes('avatar') ||
+      lowUrl.includes('banner') ||
+      lowUrl.includes('badge') ||
+      lowUrl.includes('payment') ||
+      lowUrl.includes('trustpilot') ||
+      lowUrl.includes('shipping')) return true;
+  
+  return false;
+}
+
 // Parse WooCommerce sites (Jam, Slagverket, Uppsala MV)
 function parseWooCommerce(html: string, baseUrl: string, siteName: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
@@ -475,7 +505,24 @@ function parseWooCommerce(html: string, baseUrl: string, siteName: string): Scra
                        productHtml.match(/title="([^"]+)"/);
     const priceMatch = productHtml.match(/<span[^>]*class="[^"]*amount[^"]*"[^>]*>(.*?)<\/span>/i) ||
                        productHtml.match(/(\d[\d\s,.]*)\s*(?:kr|SEK|:-)/i);
-    const imgMatch = productHtml.match(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/i);
+    
+    // Find all images and pick the first non-placeholder one
+    const imgMatches = productHtml.matchAll(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi);
+    let imageUrl = '';
+    for (const imgMatch of imgMatches) {
+      const url = imgMatch[1];
+      if (!isWooCommercePlaceholderImage(url)) {
+        // Prefer wp-content/uploads images (actual product photos)
+        if (url.includes('wp-content/uploads')) {
+          imageUrl = url;
+          break;
+        }
+        // Use first valid image if we haven't found one yet
+        if (!imageUrl) {
+          imageUrl = url;
+        }
+      }
+    }
     
     const title = titleMatch ? (titleMatch[1] || '').replace(/<[^>]+>/g, '').trim() : '';
     let adUrl = urlMatch ? urlMatch[1] : '';
@@ -495,7 +542,7 @@ function parseWooCommerce(html: string, baseUrl: string, siteName: string): Scra
         price_text: text || null,
         price_amount: amount,
         location: siteName,
-        image_url: imgMatch ? imgMatch[1] : '',
+        image_url: imageUrl,
         category: categorizeByKeywords(title),
       });
     }

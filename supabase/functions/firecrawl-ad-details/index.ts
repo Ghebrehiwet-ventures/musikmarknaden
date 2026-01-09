@@ -6,13 +6,16 @@ const corsHeaders = {
 };
 
 // Detect source from URL
-function getSourceType(url: string): 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'jam' | 'unknown' {
+function getSourceType(url: string): 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'jam' | 'woocommerce' | 'unknown' {
   if (url.includes('musikborsen.se')) return 'musikborsen';
   if (url.includes('gearloop.se')) return 'gearloop';
   if (url.includes('dlxmusic.se')) return 'dlxmusic';
   if (url.includes('gear4music.se') || url.includes('gear4music.com')) return 'gear4music';
   if (url.includes('blocket.se')) return 'blocket';
   if (url.includes('jam.se')) return 'jam';
+  // WooCommerce-based stores
+  if (url.includes('uppsalamusikverkstad.se')) return 'woocommerce';
+  if (url.includes('slagverket.com')) return 'woocommerce';
   return 'unknown';
 }
 
@@ -272,11 +275,16 @@ function parseAdDetails(
   markdown: string, 
   html: string, 
   metadata: Record<string, unknown>,
-  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'jam' | 'unknown'
+  sourceType: 'musikborsen' | 'gearloop' | 'dlxmusic' | 'gear4music' | 'blocket' | 'jam' | 'woocommerce' | 'unknown'
 ) {
   // For Jam.se, use dedicated parser
   if (sourceType === 'jam') {
     return parseJamAdDetails(markdown, html, metadata);
+  }
+  
+  // For WooCommerce stores, use dedicated parser
+  if (sourceType === 'woocommerce') {
+    return parseWooCommerceAdDetails(markdown, html, metadata);
   }
   
   const title = (metadata.title as string)?.split(' - ')[0]?.split(' | ')[0] || extractTitle(markdown) || 'Okänd titel';
@@ -1455,6 +1463,97 @@ function extractImages(markdown: string, html: string, sourceType: string, adUrl
     console.log(`Gear4Music: Final image count: ${finalImages.length}`);
     
     return finalImages;
+  } else if (sourceType === 'woocommerce') {
+    // WooCommerce stores (Uppsala Musikverkstad, Slagverket, etc.)
+    console.log('WooCommerce: Starting image extraction');
+    
+    const seenBaseUrls = new Set<string>();
+    
+    // Helper to check if URL is a placeholder/flag image
+    const isWooCommercePlaceholder = (url: string): boolean => {
+      const lowUrl = url.toLowerCase();
+      // Flag images
+      if (lowUrl.includes('sveriges-flagga') || 
+          lowUrl.includes('flag_of_') ||
+          lowUrl.includes('/se.png') ||
+          lowUrl.includes('/dk.png') ||
+          lowUrl.includes('/no.png') ||
+          lowUrl.includes('/fi.png') ||
+          lowUrl.includes('flag-')) return true;
+      // Common non-product images
+      if (lowUrl.includes('placeholder') ||
+          lowUrl.includes('no-image') ||
+          lowUrl.includes('woocommerce-placeholder') ||
+          lowUrl.includes('logo') ||
+          lowUrl.includes('icon') ||
+          lowUrl.includes('avatar') ||
+          lowUrl.includes('banner') ||
+          lowUrl.includes('badge') ||
+          lowUrl.includes('payment') ||
+          lowUrl.includes('trustpilot') ||
+          lowUrl.includes('shipping') ||
+          lowUrl.includes('checkout') ||
+          lowUrl.includes('cart')) return true;
+      return false;
+    };
+    
+    // Priority 1: Look for WooCommerce product gallery
+    const galleryMatch = html.match(/<div[^>]*class="[^"]*woocommerce-product-gallery[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?=<div[^>]*class="[^"]*(?:summary|product-info))/i);
+    const galleryHtml = galleryMatch ? galleryMatch[1] : '';
+    
+    if (galleryHtml) {
+      console.log('WooCommerce: Found product gallery');
+      
+      // Extract data-large_image or data-src (full-size images)
+      const largeImageRegex = /data-large_image="([^"]+)"/gi;
+      let match;
+      while ((match = largeImageRegex.exec(galleryHtml)) !== null) {
+        const url = match[1];
+        if (!isWooCommercePlaceholder(url)) {
+          const baseUrl = getBaseImageUrl(url);
+          if (!seenBaseUrls.has(baseUrl)) {
+            seenBaseUrls.add(baseUrl);
+            images.push(baseUrl);
+          }
+        }
+      }
+      
+      // Fallback: regular img src in gallery
+      if (images.length === 0) {
+        const imgRegex = /src="([^"]+wp-content\/uploads[^"]+)"/gi;
+        while ((match = imgRegex.exec(galleryHtml)) !== null) {
+          const url = match[1];
+          if (!isWooCommercePlaceholder(url)) {
+            const baseUrl = getBaseImageUrl(url);
+            if (!seenBaseUrls.has(baseUrl)) {
+              seenBaseUrls.add(baseUrl);
+              images.push(baseUrl);
+            }
+          }
+        }
+      }
+    }
+    
+    // Priority 2: If no gallery found, search for wp-content/uploads images in page
+    if (images.length === 0) {
+      console.log('WooCommerce: No gallery found, searching for wp-content/uploads images');
+      
+      const uploadRegex = /(?:src|href)="(https?:\/\/[^"]+wp-content\/uploads[^"]+\.(?:jpg|jpeg|png|webp))"/gi;
+      let match;
+      while ((match = uploadRegex.exec(html)) !== null) {
+        const url = match[1];
+        if (!isWooCommercePlaceholder(url)) {
+          const baseUrl = getBaseImageUrl(url);
+          if (!seenBaseUrls.has(baseUrl)) {
+            seenBaseUrls.add(baseUrl);
+            images.push(baseUrl);
+          }
+        }
+      }
+    }
+    
+    console.log(`WooCommerce: Found ${images.length} product images`);
+    return images;
   } else {
     // Generic image extraction (Note: Blocket is handled at the top of extractImages())
     const genericRegex = /https?:\/\/[^\s"'<>]+\.(?:jpg|jpeg|png|gif|webp)/gi;
@@ -1469,6 +1568,192 @@ function extractImages(markdown: string, html: string, sourceType: string, adUrl
   }
   
   return images;
+}
+
+// WooCommerce-specific parser for Uppsala Musikverkstad, Slagverket, etc.
+function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Record<string, unknown>) {
+  console.log('WooCommerce: Starting dedicated parser');
+  
+  // Skip patterns for cookie/consent text
+  const badPatterns = [
+    /cookie/i,
+    /samtycke/i,
+    /gdpr/i,
+    /integritetspolicy/i,
+    /consent/i,
+    /varukorg/i,
+    /checkout/i,
+  ];
+  
+  const isBadText = (t: string): boolean => badPatterns.some(p => p.test(t));
+  
+  // 1. Extract title from JSON-LD or og:title
+  let title = '';
+  
+  // Try JSON-LD first
+  const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/i);
+  if (jsonLdMatch) {
+    try {
+      const jsonLd = JSON.parse(jsonLdMatch[1]);
+      if (jsonLd['@type'] === 'Product' && jsonLd.name && !isBadText(jsonLd.name)) {
+        title = jsonLd.name;
+        console.log('WooCommerce: Got title from JSON-LD:', title);
+      }
+    } catch (e) {
+      console.log('WooCommerce: JSON-LD parse error');
+    }
+  }
+  
+  // Fallback to og:title
+  if (!title) {
+    const ogTitleMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i);
+    if (ogTitleMatch && !isBadText(ogTitleMatch[1])) {
+      title = ogTitleMatch[1].split(' - ')[0].split(' | ')[0].trim();
+      console.log('WooCommerce: Got title from og:title:', title);
+    }
+  }
+  
+  // Fallback to meta title or H1
+  if (!title) {
+    const metaTitleMatch = html.match(/<title>([^<]+)<\/title>/i);
+    if (metaTitleMatch && !isBadText(metaTitleMatch[1])) {
+      title = metaTitleMatch[1].split(' - ')[0].split(' | ')[0].trim();
+    }
+  }
+  
+  if (!title) {
+    const h1Match = markdown.match(/^#\s+(.+)$/m);
+    if (h1Match && !isBadText(h1Match[1])) {
+      title = h1Match[1].trim();
+    }
+  }
+  
+  if (!title) {
+    title = 'Okänd produkt';
+  }
+  
+  // 2. Extract description
+  let description = '';
+  
+  // Try JSON-LD
+  if (jsonLdMatch) {
+    try {
+      const jsonLd = JSON.parse(jsonLdMatch[1]);
+      if (jsonLd['@type'] === 'Product' && jsonLd.description && !isBadText(jsonLd.description)) {
+        description = jsonLd.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        console.log('WooCommerce: Got description from JSON-LD, length:', description.length);
+      }
+    } catch (e) {
+      // Already logged
+    }
+  }
+  
+  // Try og:description
+  if (!description) {
+    const ogDescMatch = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
+    if (ogDescMatch && !isBadText(ogDescMatch[1]) && ogDescMatch[1].length > 20) {
+      description = ogDescMatch[1];
+      console.log('WooCommerce: Got description from og:description');
+    }
+  }
+  
+  // Try meta description
+  if (!description) {
+    const metaDescMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i);
+    if (metaDescMatch && !isBadText(metaDescMatch[1]) && metaDescMatch[1].length > 20) {
+      description = metaDescMatch[1];
+    }
+  }
+  
+  // Try WooCommerce product description divs
+  if (!description) {
+    const descPatterns = [
+      /<div[^>]*class="[^"]*woocommerce-product-details__short-description[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+      /<div[^>]*class="[^"]*product-description[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
+      /<div[^>]*id="tab-description"[^>]*>([\s\S]*?)<\/div>/gi,
+    ];
+    
+    for (const pattern of descPatterns) {
+      const matches = html.matchAll(pattern);
+      for (const match of matches) {
+        const rawDesc = match[1]
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (rawDesc && !isBadText(rawDesc) && rawDesc.length > 20) {
+          description = rawDesc;
+          console.log('WooCommerce: Got description from HTML class pattern');
+          break;
+        }
+      }
+      if (description) break;
+    }
+  }
+  
+  if (!description) {
+    description = 'Ingen beskrivning tillgänglig';
+  }
+  
+  // 3. Extract price
+  let priceText: string | null = null;
+  let priceAmount: number | null = null;
+  
+  // Try JSON-LD
+  if (jsonLdMatch) {
+    try {
+      const jsonLd = JSON.parse(jsonLdMatch[1]);
+      if (jsonLd['@type'] === 'Product' && jsonLd.offers?.price) {
+        priceAmount = parseFloat(jsonLd.offers.price);
+        priceText = `${priceAmount} kr`;
+        console.log('WooCommerce: Got price from JSON-LD:', priceText);
+      }
+    } catch (e) {
+      // Already logged
+    }
+  }
+  
+  // Fallback to WooCommerce price element
+  if (!priceText) {
+    const priceMatch = html.match(/<span[^>]*class="[^"]*woocommerce-Price-amount[^"]*"[^>]*>.*?(\d[\d\s,.]*).*?<\/span>/i);
+    if (priceMatch) {
+      const rawPrice = priceMatch[1].replace(/\s/g, '').replace(',', '.');
+      priceAmount = parseFloat(rawPrice);
+      priceText = `${priceMatch[1].trim()} kr`;
+    }
+  }
+  
+  // 4. Location - use store name from URL
+  let location = '';
+  const sourceUrl = (metadata.sourceURL as string) || '';
+  if (sourceUrl.includes('uppsalamusikverkstad')) {
+    location = 'Uppsala Musikverkstad';
+  } else if (sourceUrl.includes('slagverket')) {
+    location = 'Slagverket';
+  } else {
+    location = 'Webbutik';
+  }
+  
+  // 5. Extract images
+  const images = extractImages(markdown, html, 'woocommerce', sourceUrl);
+  
+  // 6. Contact info (stores don't usually expose personal contact)
+  const contactInfo: { email?: string; phone?: string } = {};
+  
+  console.log(`WooCommerce: Parsed - title: "${title}", images: ${images.length}, desc length: ${description.length}`);
+  
+  return {
+    title,
+    description,
+    price_text: priceText,
+    price_amount: priceAmount,
+    location,
+    images,
+    contact_info: contactInfo,
+    seller: undefined,
+    condition: undefined,
+  };
 }
 
 // Jam.se-specific parser - uses JSON-LD and og: tags for clean extraction
