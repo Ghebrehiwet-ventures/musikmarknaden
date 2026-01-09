@@ -1497,44 +1497,43 @@ function extractImages(markdown: string, html: string, sourceType: string, adUrl
       return false;
     };
     
-    // Priority 1: Look for WooCommerce product gallery
-    const galleryMatch = html.match(/<div[^>]*class="[^"]*woocommerce-product-gallery[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?=<div[^>]*class="[^"]*(?:summary|product-info))/i);
-    const galleryHtml = galleryMatch ? galleryMatch[1] : '';
+    // Priority 1: Look for WooCommerce product gallery - search entire HTML for gallery images
+    // The gallery structure varies, so we look for data-large_image attributes anywhere in the page
+    // and also look for images within woocommerce-product-gallery__image containers
     
-    if (galleryHtml) {
-      console.log('WooCommerce: Found product gallery');
-      
-      // Extract data-large_image or data-src (full-size images)
-      const largeImageRegex = /data-large_image="([^"]+)"/gi;
-      let match;
-      while ((match = largeImageRegex.exec(galleryHtml)) !== null) {
-        const url = match[1];
-        if (!isWooCommercePlaceholder(url)) {
-          const baseUrl = getBaseImageUrl(url);
-          if (!seenBaseUrls.has(baseUrl)) {
-            seenBaseUrls.add(baseUrl);
-            images.push(baseUrl);
-          }
-        }
-      }
-      
-      // Fallback: regular img src in gallery
-      if (images.length === 0) {
-        const imgRegex = /src="([^"]+wp-content\/uploads[^"]+)"/gi;
-        while ((match = imgRegex.exec(galleryHtml)) !== null) {
-          const url = match[1];
-          if (!isWooCommercePlaceholder(url)) {
-            const baseUrl = getBaseImageUrl(url);
-            if (!seenBaseUrls.has(baseUrl)) {
-              seenBaseUrls.add(baseUrl);
-              images.push(baseUrl);
-            }
-          }
+    // First, try to find all data-large_image attributes (most reliable for full-size images)
+    const largeImageRegex = /data-large_image="([^"]+)"/gi;
+    let match;
+    while ((match = largeImageRegex.exec(html)) !== null) {
+      const url = match[1];
+      if (!isWooCommercePlaceholder(url)) {
+        const baseUrl = getBaseImageUrl(url);
+        if (!seenBaseUrls.has(baseUrl)) {
+          seenBaseUrls.add(baseUrl);
+          images.push(baseUrl);
+          console.log('WooCommerce: Found large image:', baseUrl.substring(baseUrl.lastIndexOf('/') + 1));
         }
       }
     }
     
-    // Priority 2: If no gallery found, search for wp-content/uploads images in page
+    if (images.length > 0) {
+      console.log('WooCommerce: Found product gallery with', images.length, 'images');
+    }
+    
+    // Priority 2: Look for og:image (usually the main product image)
+    if (images.length === 0) {
+      const ogImageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i);
+      if (ogImageMatch && !isWooCommercePlaceholder(ogImageMatch[1])) {
+        const baseUrl = getBaseImageUrl(ogImageMatch[1]);
+        if (!seenBaseUrls.has(baseUrl)) {
+          seenBaseUrls.add(baseUrl);
+          images.push(baseUrl);
+          console.log('WooCommerce: Found og:image');
+        }
+      }
+    }
+    
+    // Priority 3: Search for wp-content/uploads images in product area
     if (images.length === 0) {
       console.log('WooCommerce: No gallery found, searching for wp-content/uploads images');
       
@@ -1638,43 +1637,81 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
   }
   
   // 2. Extract description (avoid duplicating "Beskrivning" header)
+  // Use a more robust approach that handles nested divs
   let description = '';
   
-  // Try WooCommerce product description tab content first (most accurate)
-  const tabDescPatterns = [
-    /<div[^>]*id="tab-description"[^>]*>([\s\S]*?)<\/div>/gi,
-    /<div[^>]*class="[^"]*woocommerce-Tabs-panel--description[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
-  ];
-  
-  for (const pattern of tabDescPatterns) {
-    const matches = html.matchAll(pattern);
-    for (const match of matches) {
-      let rawDesc = match[1]
-        .replace(/<h2[^>]*>.*?<\/h2>/gi, '') // Remove "BESKRIVNING" heading
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/\s+/g, ' ')
-        .trim();
-      // Remove leading "Beskrivning" if present
-      rawDesc = rawDesc.replace(/^Beskrivning\s*/i, '');
-      if (rawDesc && !isBadText(rawDesc) && rawDesc.length > 20) {
-        description = rawDesc;
-        console.log('WooCommerce: Got description from tab-description');
-        break;
+  // Helper to extract text content between a start marker and an end marker
+  const extractBetweenMarkers = (html: string, startPattern: RegExp, endPatterns: RegExp[]): string => {
+    const startMatch = html.match(startPattern);
+    if (!startMatch) return '';
+    
+    const startIndex = startMatch.index! + startMatch[0].length;
+    let endIndex = html.length;
+    
+    for (const endPattern of endPatterns) {
+      const remaining = html.substring(startIndex);
+      const endMatch = remaining.match(endPattern);
+      if (endMatch && endMatch.index !== undefined) {
+        const possibleEnd = startIndex + endMatch.index;
+        if (possibleEnd < endIndex) {
+          endIndex = possibleEnd;
+        }
       }
     }
-    if (description) break;
+    
+    return html.substring(startIndex, endIndex);
+  };
+  
+  // Try to find tab-description content - look for the panel and extract until next tab/section
+  const tabDescStart = /<div[^>]*id="tab-description"[^>]*>/i;
+  const tabDescEnd = [
+    /<div[^>]*id="tab-(?!description)[^"]*"[^>]*>/i,  // Next tab
+    /<div[^>]*class="[^"]*woocommerce-Tabs-panel--(?!description)[^"]*"[^>]*>/i,
+    /<\/div>\s*<\/div>\s*<\/div>/i,  // Closing of tabs container
+  ];
+  
+  let rawDescHtml = extractBetweenMarkers(html, tabDescStart, tabDescEnd);
+  
+  if (rawDescHtml) {
+    // Clean HTML to text
+    let rawDesc = rawDescHtml
+      .replace(/<h2[^>]*>.*?<\/h2>/gi, '') // Remove "BESKRIVNING" heading
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove scripts
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove styles
+      .replace(/<br\s*\/?>/gi, '\n') // Convert br to newlines
+      .replace(/<\/p>/gi, '\n\n') // Convert paragraph ends to double newlines
+      .replace(/<\/li>/gi, '\n') // Convert list items to newlines
+      .replace(/<li[^>]*>/gi, '• ') // Add bullet points
+      .replace(/<[^>]+>/g, ' ') // Remove remaining HTML
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#8211;/g, '–')
+      .replace(/&#8230;/g, '…')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    // Remove leading "Beskrivning" if present
+    rawDesc = rawDesc.replace(/^Beskrivning\s*/i, '');
+    
+    if (rawDesc && !isBadText(rawDesc) && rawDesc.length > 20) {
+      description = rawDesc;
+      console.log('WooCommerce: Got description from tab-description, length:', description.length);
+    }
   }
   
-  // Try JSON-LD
+  // Try JSON-LD as fallback
   if (!description && jsonLdData) {
     const jsonDesc = jsonLdData.description as string | undefined;
     if (jsonDesc && !isBadText(jsonDesc)) {
       let cleanDesc = jsonDesc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
       cleanDesc = cleanDesc.replace(/^Beskrivning\s*/i, '');
-      description = cleanDesc;
-      console.log('WooCommerce: Got description from JSON-LD, length:', description.length);
+      if (cleanDesc.length > 20) {
+        description = cleanDesc;
+        console.log('WooCommerce: Got description from JSON-LD, length:', description.length);
+      }
     }
   }
   
@@ -1689,21 +1726,22 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
   
   // Try short description
   if (!description) {
-    const shortDescMatch = html.match(/<div[^>]*class="[^"]*woocommerce-product-details__short-description[^"]*"[^>]*>([\s\S]*?)<\/div>/gi);
-    if (shortDescMatch) {
-      for (const match of html.matchAll(/<div[^>]*class="[^"]*woocommerce-product-details__short-description[^"]*"[^>]*>([\s\S]*?)<\/div>/gi)) {
-        let rawDesc = match[1]
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/&nbsp;/g, ' ')
-          .replace(/&amp;/g, '&')
-          .replace(/\s+/g, ' ')
-          .trim();
-        rawDesc = rawDesc.replace(/^Beskrivning\s*/i, '');
-        if (rawDesc && !isBadText(rawDesc) && rawDesc.length > 20) {
-          description = rawDesc;
-          console.log('WooCommerce: Got description from short-description');
-          break;
-        }
+    const shortDescHtml = extractBetweenMarkers(
+      html, 
+      /<div[^>]*class="[^"]*woocommerce-product-details__short-description[^"]*"[^>]*>/i,
+      [/<\/div>\s*<div/i, /<form/i]
+    );
+    if (shortDescHtml) {
+      let rawDesc = shortDescHtml
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ')
+        .trim();
+      rawDesc = rawDesc.replace(/^Beskrivning\s*/i, '');
+      if (rawDesc && !isBadText(rawDesc) && rawDesc.length > 20) {
+        description = rawDesc;
+        console.log('WooCommerce: Got description from short-description');
       }
     }
   }
