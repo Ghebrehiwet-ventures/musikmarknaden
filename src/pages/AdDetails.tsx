@@ -373,11 +373,11 @@ export default function AdDetails() {
 
     const detailImages = details?.images ?? [];
     const listingImage = ad?.image_url;
-    
-    // Build deduplicated list - detail images first, then listing image if unique
+
+    // Build deduplicated list from details first (authoritative). Only fall back to listing image if details has none.
     const seen = new Set<string>();
     const unique: string[] = [];
-    
+
     for (const img of detailImages) {
       if (!img) continue;
       const normalized = normalizeWpUrl(img);
@@ -386,15 +386,12 @@ export default function AdDetails() {
         unique.push(img);
       }
     }
-    
-    // Only add listing image if it's not already represented AND not a thumbnail
-    if (listingImage && !isThumbnailUrl(listingImage)) {
-      const normalizedListing = normalizeWpUrl(listingImage);
-      if (!seen.has(normalizedListing)) {
-        unique.push(listingImage);
-      }
+
+    // Fallback: if scraping returned no images, use listing image (if not a thumbnail)
+    if (unique.length === 0 && listingImage && !isThumbnailUrl(listingImage)) {
+      unique.push(listingImage);
     }
-    
+
     return unique;
   }, [details?.images, ad?.image_url]);
 
