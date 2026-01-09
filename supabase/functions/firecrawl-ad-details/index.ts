@@ -92,6 +92,7 @@ Deno.serve(async (req: Request) => {
             contact_info: cached.contact_info || {},
             seller: cached.seller,
             condition: cached.condition,
+            specifications: cached.specifications || [],
             fromCache: true,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -207,6 +208,7 @@ Deno.serve(async (req: Request) => {
         contact_info: adDetails.contact_info,
         seller: adDetails.seller,
         condition: adDetails.condition,
+        specifications: adDetails.specifications || [],
         updated_at: new Date().toISOString(),
       }, { onConflict: 'ad_url' });
 
@@ -339,6 +341,7 @@ function parseAdDetails(
     contact_info: contactInfo,
     seller: sellerInfo,
     condition,
+    specifications: [],
   };
 }
 
@@ -1757,8 +1760,8 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
     description = 'Ingen beskrivning tillgänglig';
   }
   
-  // 3. Extract specifications (from SPECIFIKATION tab)
-  let specifications = '';
+  // 3. Extract specifications (from SPECIFIKATION tab) as structured array
+  const specifications: Array<{ label: string; value: string }> = [];
   const specPatterns = [
     /<div[^>]*id="tab-additional_information"[^>]*>([\s\S]*?)<\/div>/gi,
     /<div[^>]*class="[^"]*woocommerce-Tabs-panel--additional_information[^"]*"[^>]*>([\s\S]*?)<\/div>/gi,
@@ -1770,7 +1773,6 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
     for (const match of matches) {
       // Parse table rows
       const tableHtml = match[1] || match[0];
-      const rows: string[] = [];
       const rowMatches = tableHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
       for (const rowMatch of rowMatches) {
         const rowHtml = rowMatch[1];
@@ -1780,22 +1782,16 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
           const label = labelMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
           const value = valueMatch[1].replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').trim();
           if (label && value && !isBadText(label) && !isBadText(value)) {
-            rows.push(`${label}: ${value}`);
+            specifications.push({ label, value });
           }
         }
       }
-      if (rows.length > 0) {
-        specifications = rows.join('\n');
-        console.log('WooCommerce: Got specifications, rows:', rows.length);
+      if (specifications.length > 0) {
+        console.log('WooCommerce: Got specifications, rows:', specifications.length);
         break;
       }
     }
-    if (specifications) break;
-  }
-  
-  // Append specifications to description if found
-  if (specifications) {
-    description = description + '\n\n## Specifikationer\n' + specifications;
+    if (specifications.length > 0) break;
   }
   
   // Helper to parse Swedish price format (1.999 or 1 999 = 1999, komma is decimal)
@@ -1888,7 +1884,7 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
   // 7. Contact info (stores don't usually expose personal contact)
   const contactInfo: { email?: string; phone?: string } = {};
   
-  console.log(`WooCommerce: Parsed - title: "${title}", price: ${priceText}, images: ${images.length}, desc length: ${description.length}`);
+  console.log(`WooCommerce: Parsed - title: "${title}", price: ${priceText}, images: ${images.length}, desc length: ${description.length}, specs: ${specifications.length}`);
   
   return {
     title,
@@ -1900,6 +1896,7 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
     contact_info: contactInfo,
     seller: undefined,
     condition: undefined,
+    specifications,
   };
 }
 
@@ -2215,6 +2212,7 @@ function parseJamAdDetails(markdown: string, html: string, metadata: Record<stri
     contact_info: contactInfo,
     seller: undefined,
     condition: undefined,
+    specifications: [],
   };
 }
 

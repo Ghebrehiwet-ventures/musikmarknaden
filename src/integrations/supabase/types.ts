@@ -27,6 +27,7 @@ export type Database = {
           price_amount: number | null
           price_text: string | null
           seller: Json | null
+          specifications: Json | null
           title: string | null
           updated_at: string
         }
@@ -42,6 +43,7 @@ export type Database = {
           price_amount?: number | null
           price_text?: string | null
           seller?: Json | null
+          specifications?: Json | null
           title?: string | null
           updated_at?: string
         }
@@ -57,6 +59,7 @@ export type Database = {
           price_amount?: number | null
           price_text?: string | null
           seller?: Json | null
+          specifications?: Json | null
           title?: string | null
           updated_at?: string
         }
