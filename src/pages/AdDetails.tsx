@@ -107,6 +107,53 @@ function cleanDescription(input: string, ad: Ad | null): string {
   return unique.join("\n").trim();
 }
 
+// Component to render formatted description with paragraphs and bullet lists
+function FormattedDescription({ text }: { text: string }) {
+  // Split by double newlines into paragraphs
+  const blocks = text.split(/\n\n+/).filter(Boolean);
+  
+  return (
+    <div className="text-muted-foreground leading-relaxed space-y-4">
+      {blocks.map((block, blockIndex) => {
+        const lines = block.split('\n').filter(Boolean);
+        
+        // Check if this block is a bullet list (most lines start with •)
+        const bulletLines = lines.filter(line => line.trim().startsWith('•'));
+        const isBulletList = bulletLines.length > 0 && bulletLines.length >= lines.length * 0.5;
+        
+        if (isBulletList) {
+          // Render as a styled list
+          return (
+            <ul key={blockIndex} className="space-y-2 border-l-2 border-border pl-4">
+              {lines.map((line, lineIndex) => {
+                const cleanLine = line.trim().replace(/^•\s*/, '');
+                if (!cleanLine) return null;
+                return (
+                  <li key={lineIndex} className="text-sm">
+                    {cleanLine}
+                  </li>
+                );
+              })}
+            </ul>
+          );
+        }
+        
+        // Check if this is a separator
+        if (block.trim() === '---') {
+          return <hr key={blockIndex} className="border-border" />;
+        }
+        
+        // Regular paragraph - join lines with spaces
+        return (
+          <p key={blockIndex}>
+            {lines.join(' ')}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 // Similar Ads Carousel Component
 function SimilarAdsCarousel({ ads, currentAdUrl }: { ads: Ad[]; currentAdUrl: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -640,9 +687,7 @@ export default function AdDetails() {
               
               {/* Show description immediately if cached, otherwise show skeleton while loading */}
               {description ? (
-                <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
-                  {description}
-                </p>
+                <FormattedDescription text={description} />
               ) : isLoading ? (
                 <div className="space-y-3">
                   <Skeleton className="h-4 w-full" />
@@ -659,7 +704,7 @@ export default function AdDetails() {
                   )}
                 </div>
               ) : (
-                <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                <p className="text-muted-foreground leading-relaxed">
                   Ingen beskrivning tillgänglig.
                 </p>
               )}

@@ -1673,15 +1673,19 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
   let rawDescHtml = extractBetweenMarkers(html, tabDescStart, tabDescEnd);
   
   if (rawDescHtml) {
-    // Clean HTML to text
+    // Clean HTML to text - preserve paragraph structure
     let rawDesc = rawDescHtml
       .replace(/<h2[^>]*>.*?<\/h2>/gi, '') // Remove "BESKRIVNING" heading
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove scripts
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove styles
+      .replace(/<hr\s*\/?>/gi, '\n---\n') // Horizontal rule as separator
       .replace(/<br\s*\/?>/gi, '\n') // Convert br to newlines
       .replace(/<\/p>/gi, '\n\n') // Convert paragraph ends to double newlines
+      .replace(/<p[^>]*>/gi, '') // Remove opening p tags
       .replace(/<\/li>/gi, '\n') // Convert list items to newlines
       .replace(/<li[^>]*>/gi, '• ') // Add bullet points
+      .replace(/<\/ul>/gi, '\n') // Add newline after lists
+      .replace(/<\/ol>/gi, '\n')
       .replace(/<[^>]+>/g, ' ') // Remove remaining HTML
       .replace(/&nbsp;/g, ' ')
       .replace(/&amp;/g, '&')
@@ -1690,7 +1694,10 @@ function parseWooCommerceAdDetails(markdown: string, html: string, metadata: Rec
       .replace(/&quot;/g, '"')
       .replace(/&#8211;/g, '–')
       .replace(/&#8230;/g, '…')
-      .replace(/\s+/g, ' ')
+      // Clean up whitespace while PRESERVING newlines
+      .replace(/[ \t]+/g, ' ') // Multiple spaces/tabs to single space
+      .replace(/ ?\n ?/g, '\n') // Trim spaces around newlines
+      .replace(/\n{3,}/g, '\n\n') // Max 2 consecutive newlines
       .trim();
     
     // Remove leading "Beskrivning" if present
