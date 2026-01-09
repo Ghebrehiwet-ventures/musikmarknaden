@@ -272,36 +272,46 @@ export default function AdDetails() {
              /max-width=(?:12[0-8]|25[0-6]|[1-9]\d?)\b/i.test(url);
     };
 
-    // Helper to get base URL for deduplication (strip query params and normalize)
-    const getBaseUrl = (url: string): string => {
+    // Helper to normalize WordPress image URLs for deduplication
+    // Handles: -300x200, -scaled, -rotated, query params, case differences
+    const normalizeWpUrl = (url: string): string => {
       try {
         const parsed = new URL(url);
-        return parsed.origin + parsed.pathname.toLowerCase();
+        let path = parsed.pathname.toLowerCase();
+        // Remove WordPress size suffixes like -300x200, -768x1024
+        path = path.replace(/-\d+x\d+(?=\.(jpg|jpeg|png|gif|webp))/i, '');
+        // Remove -scaled, -rotated suffixes
+        path = path.replace(/-(scaled|rotated)(?=\.(jpg|jpeg|png|gif|webp))/i, '');
+        return parsed.origin + path;
       } catch {
-        return url.split('?')[0].toLowerCase();
+        let normalized = url.split('?')[0].toLowerCase();
+        normalized = normalized.replace(/-\d+x\d+(?=\.(jpg|jpeg|png|gif|webp))/i, '');
+        normalized = normalized.replace(/-(scaled|rotated)(?=\.(jpg|jpeg|png|gif|webp))/i, '');
+        return normalized;
       }
     };
 
     const detailImages = details?.images ?? [];
-    
-    // Only include listing image if we have no detail images OR if it's not a thumbnail
     const listingImage = ad?.image_url;
-    const shouldIncludeListingImage = listingImage && 
-      (detailImages.length === 0 || !isThumbnailUrl(listingImage));
     
-    const allImages = [
-      ...detailImages,
-      ...(shouldIncludeListingImage ? [listingImage] : []),
-    ].filter(Boolean);
-    
-    // Deduplicate by base URL (same image with different query params = same image)
+    // Build deduplicated list - detail images first, then listing image if unique
     const seen = new Set<string>();
     const unique: string[] = [];
-    for (const img of allImages) {
-      const base = getBaseUrl(img);
-      if (!seen.has(base)) {
-        seen.add(base);
+    
+    for (const img of detailImages) {
+      if (!img) continue;
+      const normalized = normalizeWpUrl(img);
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
         unique.push(img);
+      }
+    }
+    
+    // Only add listing image if it's not already represented AND not a thumbnail
+    if (listingImage && !isThumbnailUrl(listingImage)) {
+      const normalizedListing = normalizeWpUrl(listingImage);
+      if (!seen.has(normalizedListing)) {
+        unique.push(listingImage);
       }
     }
     
@@ -309,10 +319,12 @@ export default function AdDetails() {
   }, [details?.images, ad?.image_url]);
 
   const title = ad?.title ?? details?.title ?? "Annons";
-  const priceText = (ad?.price_text && ad?.price_amount !== null) 
-    ? ad.price_text 
-    : (details?.price_text && details?.price_amount !== null) 
-      ? details.price_text 
+  // Prefer details price (may include sale price) over listing price
+  // Details price is scraped from the actual product page and is more accurate
+  const priceText = (details?.price_text && details?.price_amount !== null) 
+    ? details.price_text 
+    : (ad?.price_text && ad?.price_amount !== null) 
+      ? ad.price_text 
       : "Pris ej angivet";
   const location = ad?.location ?? details?.location ?? "";
   
