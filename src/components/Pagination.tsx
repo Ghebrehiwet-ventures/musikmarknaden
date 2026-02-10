@@ -10,6 +10,12 @@ interface PaginationProps {
 export function Pagination({ currentPage, totalPages, onPageChange }: PaginationProps) {
   if (totalPages <= 1) return null;
 
+  const handlePageChange = (page: number) => {
+    onPageChange(page);
+    // Scroll to top when changing pages
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const pages = [];
   const showEllipsisStart = currentPage > 3;
   const showEllipsisEnd = currentPage < totalPages - 2;
@@ -29,7 +35,7 @@ export function Pagination({ currentPage, totalPages, onPageChange }: Pagination
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => onPageChange(currentPage - 1)}
+        onClick={() => handlePageChange(currentPage - 1)}
         disabled={currentPage === 1}
       >
         <ChevronLeft className="h-4 w-4" />
@@ -47,7 +53,7 @@ export function Pagination({ currentPage, totalPages, onPageChange }: Pagination
             <Button
               variant={currentPage === page ? "default" : "ghost"}
               size="icon"
-              onClick={() => onPageChange(page)}
+              onClick={() => handlePageChange(page)}
               className={currentPage === page ? "shadow-glow" : ""}
             >
               {page}
@@ -59,7 +65,7 @@ export function Pagination({ currentPage, totalPages, onPageChange }: Pagination
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => onPageChange(currentPage + 1)}
+        onClick={() => handlePageChange(currentPage + 1)}
         disabled={currentPage === totalPages}
       >
         <ChevronRight className="h-4 w-4" />

@@ -1,6 +1,6 @@
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Mail, Phone, Loader2, ChevronLeft, ChevronRight, ExternalLink, User, CheckCircle, Share2, ChevronRight as ChevronRightIcon } from "lucide-react";
+import { MapPin, Loader2, ChevronLeft, ChevronRight, ExternalLink, User, CheckCircle, Share2, ChevronRight as ChevronRightIcon } from "lucide-react";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -816,27 +816,6 @@ export default function AdDetails() {
                     </a>
                   </Button>
 
-                  {details?.contact_info && (details.contact_info.email || details.contact_info.phone) && (
-                    <div className="flex gap-2">
-                      {details.contact_info.email && (
-                        <Button variant="outline" className="flex-1 gap-2" asChild>
-                          <a href={`mailto:${details.contact_info.email}`}>
-                            <Mail className="h-4 w-4" />
-                            E-post
-                          </a>
-                        </Button>
-                      )}
-                      {details.contact_info.phone && (
-                        <Button variant="outline" className="flex-1 gap-2" asChild>
-                          <a href={`tel:${details.contact_info.phone}`}>
-                            <Phone className="h-4 w-4" />
-                            Ring
-                          </a>
-                        </Button>
-                      )}
-                    </div>
-                  )}
-
                   <Button variant="ghost" size="sm" onClick={handleShare} className="w-full gap-2">
                     <Share2 className="h-4 w-4" />
                     Dela annons
@@ -867,7 +846,7 @@ export default function AdDetails() {
 
         {/* Similar Ads Section */}
         {similarAds.length > 0 && (
-          <section className="mt-8 lg:mt-12 px-4 lg:px-0">
+          <section className="mt-8 lg:mt-12 px-4 lg:px-0 overflow-hidden">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg lg:text-xl font-semibold">Du kanske också gillar</h2>
               {categoryInfo && (
@@ -886,33 +865,17 @@ export default function AdDetails() {
 
       {/* Mobile Sticky CTA */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur border-t border-border lg:hidden safe-area-bottom">
-        <div className="flex gap-3">
-          {details?.contact_info?.phone && (
-            <Button variant="outline" size="lg" className="gap-2" asChild>
-              <a href={`tel:${details.contact_info.phone}`}>
-                <Phone className="h-5 w-5" />
-              </a>
-            </Button>
-          )}
-          {details?.contact_info?.email && (
-            <Button variant="outline" size="lg" className="gap-2" asChild>
-              <a href={`mailto:${details.contact_info.email}`}>
-                <Mail className="h-5 w-5" />
-              </a>
-            </Button>
-          )}
-          <Button className="flex-1" size="lg" asChild>
-            <a 
-              href={ad.ad_url} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              onClick={(e) => handleExternalClick(e, ad.ad_url)}
-            >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              Visa på {sourceInfo.name}
-            </a>
-          </Button>
-        </div>
+        <Button className="w-full" size="lg" asChild>
+          <a 
+            href={ad.ad_url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            onClick={(e) => handleExternalClick(e, ad.ad_url)}
+          >
+            <ExternalLink className="h-4 w-4 mr-2" />
+            Visa på {sourceInfo.name}
+          </a>
+        </Button>
       </div>
     </div>
     </>
