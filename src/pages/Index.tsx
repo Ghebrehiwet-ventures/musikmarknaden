@@ -11,6 +11,8 @@ import { SortSelect, SortOption } from "@/components/SortSelect";
 import { SourceFilter } from "@/components/SourceFilter";
 import { fetchAdListings, Ad } from "@/lib/api";
 import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
+import { SEOHead } from "@/components/SEOHead";
+import { generateHomeMetaTags, generateCategoryMetaTags } from "@/lib/seo";
 
 export default function Index() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -128,10 +130,17 @@ export default function Index() {
     setCurrentPage(1);
   };
 
+  // SEO: Generate meta tags based on current view (homepage or category filter)
+  const seo = selectedCategory 
+    ? generateCategoryMetaTags(selectedCategory)
+    : generateHomeMetaTags();
+
   return (
-    <div className="min-h-screen bg-background">
-      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <Header 
+    <>
+      <SEOHead {...seo} />
+      <div className="min-h-screen bg-background">
+        <div className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <Header 
           onCategorySelect={handleCategoryChange} 
           searchQuery={searchQuery}
           onSearch={handleSearch}
@@ -196,6 +205,7 @@ export default function Index() {
         )}
       </main>
     </div>
+    </>
   );
 }
 

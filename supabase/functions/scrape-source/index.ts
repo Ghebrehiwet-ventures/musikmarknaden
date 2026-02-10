@@ -16,6 +16,30 @@ interface ScrapedProduct {
   source_category?: string;
 }
 
+interface ScrapeQualityConfig {
+  min_ads?: number;
+  max_invalid_ratio?: number;
+  min_image_ratio?: number;
+  require_images?: boolean;
+  allow_generic_fallback?: boolean;
+}
+
+interface QualityReport {
+  total: number;
+  valid: number;
+  invalid: number;
+  invalid_ratio: number;
+  image_ratio: number;
+}
+
+const DEFAULT_QUALITY_CONFIG: Required<ScrapeQualityConfig> = {
+  min_ads: 1,
+  max_invalid_ratio: 0.4,
+  min_image_ratio: 0.1,
+  require_images: false,
+  allow_generic_fallback: false,
+};
+
 // Jam.se URL path -> category mappings
 // The product URL contains the actual category, e.g.:
 // /begagnat/begagnat/ = Syntar (synth-modular)
@@ -83,39 +107,189 @@ const JAM_SUBCATEGORIES: Array<{ url: string; name: string }> = [
 
 function parsePrice(priceText: string): { text: string; amount: number | null } {
   const cleanText = priceText.replace(/\s+/g, ' ').trim();
-  const match = cleanText.match(/(\d[\d\s]*)/);
+  const match = cleanText.match(/(\d[\d\.\s]*)/);
   if (match) {
-    const amount = parseInt(match[1].replace(/\s/g, ''), 10);
+    // Remove both dots (thousand separator) and spaces before parsing
+    const amount = parseInt(match[1].replace(/[\.\s]/g, ''), 10);
     return { text: cleanText, amount: isNaN(amount) ? null : amount };
   }
   return { text: cleanText, amount: null };
 }
 
+function normalizeText(value: string | null | undefined): string {
+  return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+function isLikelyUiTitle(title: string): boolean {
+  const t = title.toLowerCase();
+  return (
+    t.includes('logga in') ||
+    t.includes('kundvagn') ||
+    t.includes('kassa') ||
+    t.includes('konto') ||
+    t.includes('meny') ||
+    t.includes('sok') ||
+    t.includes('cookies') ||
+    t.includes('integritet') ||
+    t.includes('villkor') ||
+    t.includes('kontakta oss') ||
+    t.includes('om oss')
+  );
+}
+
+function toAbsoluteUrl(adUrl: string, baseUrl: string): string {
+  try {
+    if (!adUrl) return '';
+    if (adUrl.startsWith('http://') || adUrl.startsWith('https://')) return adUrl;
+    const base = new URL(baseUrl);
+    return new URL(adUrl, base).toString();
+  } catch {
+    return '';
+  }
+}
+
+function isValidAdUrl(adUrl: string, baseUrl: string): boolean {
+  try {
+    if (!adUrl) return false;
+    const url = new URL(adUrl);
+    const base = new URL(baseUrl);
+    return url.hostname === base.hostname;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeProduct(product: ScrapedProduct, baseUrl: string): ScrapedProduct | null {
+  const title = normalizeText(product.title);
+  const adUrl = toAbsoluteUrl(product.ad_url, baseUrl);
+  const priceText = normalizeText(product.price_text || '');
+  const imageUrl = normalizeText(product.image_url || '');
+  const location = normalizeText(product.location || '');
+
+  if (!title || title.length < 3 || isLikelyUiTitle(title)) return null;
+  if (!isValidAdUrl(adUrl, baseUrl)) return null;
+
+  return {
+    ...product,
+    title,
+    ad_url: adUrl,
+    price_text: priceText || null,
+    image_url: imageUrl,
+    location,
+  };
+}
+
+function getAbortReason(
+  sourceName: string,
+  report: QualityReport,
+  config: Required<ScrapeQualityConfig>
+): string | null {
+  if (report.valid === 0) {
+    return `Quality gate failed for ${sourceName}: no valid ads parsed`;
+  }
+
+  if (report.total >= 10 && report.invalid_ratio > config.max_invalid_ratio) {
+    return `Quality gate failed for ${sourceName}: invalid_ratio=${report.invalid_ratio.toFixed(2)}`;
+  }
+
+  if (config.require_images && report.image_ratio < config.min_image_ratio) {
+    return `Quality gate failed for ${sourceName}: image_ratio=${report.image_ratio.toFixed(2)}`;
+  }
+
+  if (report.valid < config.min_ads) {
+    return `Quality gate failed for ${sourceName}: valid=${report.valid} < min_ads=${config.min_ads}`;
+  }
+
+  return null;
+}
+
+function normalizeAndValidateProducts(
+  products: ScrapedProduct[],
+  baseUrl: string,
+  sourceName: string,
+  config: Required<ScrapeQualityConfig>
+): { products: ScrapedProduct[]; report: QualityReport; abort_reason: string | null } {
+  const normalized: ScrapedProduct[] = [];
+  for (const product of products) {
+    const cleaned = normalizeProduct(product, baseUrl);
+    if (cleaned) normalized.push(cleaned);
+  }
+
+  const report: QualityReport = {
+    total: products.length,
+    valid: normalized.length,
+    invalid: Math.max(0, products.length - normalized.length),
+    invalid_ratio: products.length ? (products.length - normalized.length) / products.length : 1,
+    image_ratio: normalized.length
+      ? normalized.filter(p => p.image_url && p.image_url.length > 0).length / normalized.length
+      : 0,
+  };
+
+  console.log(
+    `Quality report for ${sourceName}: total=${report.total}, valid=${report.valid}, invalid=${report.invalid}, invalid_ratio=${report.invalid_ratio.toFixed(2)}, image_ratio=${report.image_ratio.toFixed(2)}`
+  );
+
+  const abortReason = getAbortReason(sourceName, report, config);
+  return { products: normalized, report, abort_reason: abortReason };
+}
+
 // Keyword-based categorization - expanded with product names that don't include brand
+// PHASE 2 FIX: Split generic "instrument" into specific subcategories for better UX
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
-  'instrument': [
-    // Guitars & brands
-    'gitarr', 'guitar', 'fender', 'gibson', 'ibanez', 'epiphone', 'schecter', 'stratocaster', 'telecaster', 'les paul',
-    'prs', 'paul reed smith', 'g&l', 'music man', 'suhr', 'charvel', 'jackson', 'esp', 'ltd', 'squier',
-    'gretsch', 'rickenbacker', 'taylor', 'martin', 'takamine', 'yamaha fg', 'yamaha c', 'cordoba', 'godin',
-    'hagström', 'hagstrom', 'larrivee', 'collings', 'santa cruz', 'guild', 'ovation', 'breedlove',
-    'aria pro', 'aria guitar', 'cort', 'washburn', 'dean', 'bc rich', 'kramer', 'evh', 'sterling',
+  // NEW: Guitars & Bass (was part of "instrument", now specific)
+  'guitars-bass': [
+    // Electric guitars
+    'gitarr', 'guitar', 'elgitarr', 'stratocaster', 'telecaster', 'les paul', 'sg', 'firebird',
+    'fender', 'gibson', 'ibanez', 'epiphone', 'schecter', 'prs', 'paul reed smith', 'g&l',
+    'music man', 'suhr', 'charvel', 'jackson', 'esp', 'ltd', 'squier', 'gretsch', 'rickenbacker',
+    'hagström', 'hagstrom', 'godin', 'reverend', 'dean', 'bc rich', 'washburn', 'kramer',
+    'aria pro', 'cort', 'evh', 'sterling',
     // Guitar model patterns
     'rg ', 'az ', 'sa ', 'sr ', 'btb', 'jem', 'gio ', 's520', 's570', 's670', 'rga', 'rgd', 'rgt',
     'jazzmaster', 'jaguar', 'mustang', 'duo-sonic', 'bronco', 'musicmaster',
     'sg ', 'sg-', 'flying v', 'explorer', 'firebird', 'es-', 'es1', 'es3',
+    // Acoustic guitars
+    'akustisk gitarr', 'acoustic', 'taylor', 'martin', 'takamine', 'yamaha fg', 'yamaha c',
+    'cordoba', 'larrivee', 'collings', 'santa cruz', 'guild', 'ovation', 'breedlove', 'seagull',
     // Bass
-    'bas', 'bass', 'precision', 'jazz bass', 'hofner', 'stingray', 'warwick', 'sandberg', 'spector', 'lakland',
-    'dingwall', 'sadowsky', 'fodera', 'mayones', 'sire',
-    // Drums
-    'trumm', 'drum', 'virvel', 'snare', 'cymbal', 'hi-hat', 'pearl', 'sonor', 'tama', 'dw', 'zildjian', 'sabian',
-    'mapex', 'ludwig', 'paiste', 'meinl', 'istanbul', 'slagverk', 'percussion',
-    // Piano/Keys (non-synth)
-    'piano', 'flygel', 'rhodes', 'wurlitzer', 'clavinet', 'keyboard', 'tangent',
-    'digitalpiano', 'stagepiano', 'clavinova',
-    // Wind/Strings
-    'saxofon', 'trumpet', 'violin', 'cello', 'flöjt', 'klarinett', 'trombon',
-    'ukulele', 'mandolin', 'banjo', 'dragspel', 'accordion', 'fiol', 'viola', 'kontrabas'
+    'bas', 'bass', 'elbas', 'precision', 'jazz bass', 'pbass', 'jbass', 'hofner', 'stingray',
+    'warwick', 'sandberg', 'spector', 'lakland', 'dingwall', 'sadowsky', 'fodera', 'mayones',
+    'marleaux', 'zon', 'esh', 'elrick', 'sire', 'rickenbacker 4', 'musicman bass', 'sterling bass'
+  ],
+  // NEW: Drums & Percussion (was part of "instrument", now specific)
+  'drums-percussion': [
+    'trumm', 'drum', 'trumset', 'drumset', 'virvel', 'snare', 'cymbal', 'hi-hat', 'hihat',
+    'pearl', 'sonor', 'tama', 'dw', 'drum workshop', 'zildjian', 'sabian', 'paiste', 'meinl',
+    'mapex', 'gretsch drums', 'ludwig', 'yamaha drums', 'istanbul', 'bosphorus', 'ufip',
+    'kick', 'bastrumma', 'bass drum', 'tom', 'floor tom', 'rack tom', 'ride', 'crash', 'splash',
+    'china', 'slagverk', 'percussion', 'congas', 'bongos', 'cajon', 'djembe', 'shaker',
+    'tambourine', 'cowbell', 'claves', 'guiro', 'maracas', 'agogo', 'cabasa'
+  ],
+  // NEW: Keys & Pianos (was part of "instrument", now specific - excludes synths)
+  'keys-pianos': [
+    'piano', 'pianino', 'flygel', 'grand piano', 'upright piano', 'digitalpiano', 'stagepiano',
+    'el-piano', 'rhodes', 'wurlitzer', 'clavinet', 'keyboard', 'tangentinstrument', 'klaver', 'clavinova',
+    // Stage pianos (NOT synths - real piano sounds)
+    'yamaha p', 'yamaha cp', 'roland fp', 'roland rd', 'kawai mp', 'casio px', 'casio privia',
+    'korg sv', 'nord piano', 'yamaha clavinova', 'kawai ca', 'roland hp',
+    // MIDI controllers (not synths - just keyboards)
+    'midi keyboard', 'midiklaviatur', 'klaviatur', 'controller keyboard', 'novation launchkey',
+    'arturia keylab', 'native instruments', 'akai mpk', 'alesis v', 'roland a-', 'korg microkey'
+  ],
+  // NEW: Wind & Brass (was part of "instrument", now specific)
+  'wind-brass': [
+    'saxofon', 'trumpet', 'trombon', 'klarinett', 'flöjt', 'oboe', 'fagott', 'valthorn',
+    'tuba', 'euphonium', 'cornet', 'flugelhorn', 'piccolo', 'altflöjt', 'basklarinett',
+    'sopransax', 'altsax', 'tenorsax', 'barytonsax', 'munspel', 'harmonica', 'melodica',
+    'selmer', 'yamaha ytr', 'yamaha yts', 'bach', 'conn', 'king', 'buescher', 'keilwerth',
+    'yanagisawa', 'cannonball', 'jupiter', 'pearl flute', 'muramatsu', 'burkart'
+  ],
+  // NEW: Strings & Other Instruments (was part of "instrument", now specific)
+  'strings-other': [
+    'violin', 'fiol', 'viola', 'cello', 'kontrabas', 'double bass', 'ukulele', 'uke',
+    'mandolin', 'banjo', 'dragspel', 'accordion', 'concertina', 'harp', 'harpa',
+    'sitar', 'bouzouki', 'dulcimer', 'zither', 'autoharp', 'hurdy gurdy', 'vevlira',
+    'stradivarius', 'stentor', 'yamaha silent', 'electric violin', 'ns design'
   ],
   'amplifiers': [
     'förstärkare', 'amp', 'combo', 'marshall', 'vox', 'mesa', 'boogie', 'mesa boogie',
@@ -226,18 +400,27 @@ function categorizeByKeywords(title: string): string {
   const decoded = decodeHtmlEntities(title);
   const titleLower = decoded.toLowerCase();
   
-  for (const keyword of CATEGORY_KEYWORDS['instrument']) {
-    const kw = keyword.toLowerCase();
-    if (SHORT_KEYWORDS.has(kw)) {
-      const regex = new RegExp(`\\b${kw}\\b`, 'i');
-      if (regex.test(titleLower)) return 'instrument';
-    } else if (titleLower.includes(kw)) {
-      return 'instrument';
-    }
-  }
+  // PHASE 2 FIX: Priority order from most specific to least specific
+  // Synths/pedals/studio checked FIRST (specific brands), instruments LAST (generic)
   
-  for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
-    if (category === 'instrument') continue;
+  const categoryPriority = [
+    'synth-modular',      // 1. Synths first (Moog, Korg override generic "keyboard")
+    'pedals-effects',     // 2. Pedals & multi-effects
+    'studio',             // 3. Mics, interfaces, monitors
+    'amplifiers',         // 4. Amps & cabs
+    'dj-live',            // 5. DJ gear & PA systems
+    'guitars-bass',       // 6. Guitars & bass (NEW - specific instrument type)
+    'drums-percussion',   // 7. Drums & percussion (NEW - specific instrument type)
+    'keys-pianos',        // 8. Keyboards & pianos (NEW - not synths, real pianos)
+    'wind-brass',         // 9. Wind & brass instruments (NEW - specific)
+    'strings-other',      // 10. Strings & other acoustic (NEW - specific)
+    'accessories-parts',  // 11. Accessories last (catch-all for cables, cases, etc)
+  ];
+  
+  for (const category of categoryPriority) {
+    const keywords = CATEGORY_KEYWORDS[category];
+    if (!keywords) continue;
+    
     for (const keyword of keywords) {
       const kw = keyword.toLowerCase();
       if (SHORT_KEYWORDS.has(kw)) {
@@ -248,6 +431,7 @@ function categorizeByKeywords(title: string): string {
       }
     }
   }
+  
   return 'other';
 }
 
@@ -917,16 +1101,28 @@ async function scrapeSource(
   scrapeUrl: string, 
   baseUrl: string, 
   sourceName: string,
-  previewLimit?: number
-): Promise<ScrapedProduct[]> {
+  previewLimit?: number,
+  qualityConfig?: ScrapeQualityConfig
+): Promise<{ products: ScrapedProduct[]; report: QualityReport; abort_reason: string | null }> {
   console.log(`Starting scrape for ${sourceName} from ${scrapeUrl}...`);
   if (previewLimit) {
     console.log(`PREVIEW MODE: Will stop after ${previewLimit} products`);
   }
-  
+
+  const config = { ...DEFAULT_QUALITY_CONFIG, ...(qualityConfig || {}) };
   const domain = new URL(scrapeUrl).hostname.toLowerCase();
   const allProducts: ScrapedProduct[] = [];
-  
+  const knownDomains = [
+    'musikborsen',
+    'blocket',
+    'dlxmusic',
+    'gear4music',
+    'sefina',
+    'jam.se',
+    'slagverket',
+    'uppsalamusikverkstad',
+  ];
+
   // DLX Music needs pagination
   if (domain.includes('dlxmusic')) {
     const maxPages = previewLimit ? 1 : 10; // Only 1 page in preview mode
@@ -1183,7 +1379,8 @@ async function scrapeSource(
     allProducts.push(...products);
     
     // If we got very few products (and not in preview mode), try generic parser as well
-    if (!previewLimit && allProducts.length < 5) {
+    const isKnown = knownDomains.some(d => domain.includes(d));
+    if (!previewLimit && allProducts.length < 5 && (config.allow_generic_fallback || !isKnown)) {
       console.log(`Only found ${allProducts.length} products with specific parser, trying generic...`);
       const genericProducts = parseGeneric(html, markdown, baseUrl, sourceName);
       
@@ -1193,6 +1390,9 @@ async function scrapeSource(
           allProducts.push(p);
         }
       }
+    } else if (!previewLimit && allProducts.length < 5 && isKnown) {
+      console.error(`Known source returned too few products (${allProducts.length}). Failing to avoid bad data.`);
+      throw new Error(`Scrape failed: too few products for ${sourceName}`);
     }
   }
   
@@ -1205,7 +1405,7 @@ async function scrapeSource(
   });
   
   console.log(`Found ${uniqueProducts.length} unique products for ${sourceName}`);
-  return uniqueProducts;
+  return normalizeAndValidateProducts(uniqueProducts, baseUrl, sourceName, config);
 }
 
 Deno.serve(async (req) => {
@@ -1262,12 +1462,14 @@ Deno.serve(async (req) => {
     );
 
     // Scrape products using the configured URL
-    let products = await scrapeSource(
+    const qualityConfig = (source.config || {}) as ScrapeQualityConfig;
+    const { products, report, abort_reason } = await scrapeSource(
       firecrawlApiKey, 
       source.scrape_url, 
       source.base_url || new URL(source.scrape_url).origin,
       source.name,
-      previewMode ? previewLimit : undefined
+      previewMode ? previewLimit : undefined,
+      qualityConfig
     );
 
     // Apply category mappings
@@ -1275,6 +1477,21 @@ Deno.serve(async (req) => {
       ...p,
       category: categoryMap.get(p.category.toLowerCase()) || p.category,
     }));
+
+    if (!previewMode && abort_reason) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          abort_reason,
+          total_ads_fetched: report.total,
+          valid_ads: report.valid,
+          invalid_ads: report.invalid,
+          invalid_ratio: report.invalid_ratio,
+          image_ratio: report.image_ratio,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // AI categorization for products that remain in "other" category
     // Only run in full sync mode (not preview) to save API calls
@@ -1395,6 +1612,12 @@ REGLER:
           source_name: source.name,
           products: previewProducts,
           total_found: products.length,
+          total_ads_fetched: report.total,
+          valid_ads: report.valid,
+          invalid_ads: report.invalid,
+          invalid_ratio: report.invalid_ratio,
+          image_ratio: report.image_ratio,
+          abort_reason,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -1454,19 +1677,16 @@ REGLER:
       }
     }
 
-    // Mark ads not seen in this scrape as inactive
-    const scrapedUrls = products.map(p => p.ad_url);
-    if (scrapedUrls.length > 0) {
-      const { error: deactivateError } = await supabase
-        .from('ad_listings_cache')
-        .update({ is_active: false })
-        .eq('source_id', sourceId)
-        .eq('is_active', true)
-        .not('ad_url', 'in', `(${scrapedUrls.map(u => `"${u}"`).join(',')})`);
+    // Mark ads not seen in this scrape as inactive using last_seen_at (safer than NOT IN lists)
+    const { error: deactivateError } = await supabase
+      .from('ad_listings_cache')
+      .update({ is_active: false })
+      .eq('source_id', sourceId)
+      .eq('is_active', true)
+      .lt('last_seen_at', now);
 
-      if (deactivateError) {
-        console.error('Error deactivating old ads:', deactivateError);
-      }
+    if (deactivateError) {
+      console.error('Error deactivating old ads:', deactivateError);
     }
 
     console.log(`Scrape complete for ${source.name}: ${upsertedCount} ads upserted, ${newCount} new`);
@@ -1478,6 +1698,12 @@ REGLER:
         ads_found: products.length,
         ads_new: newCount,
         ads_updated: upsertedCount - newCount,
+        total_ads_fetched: report.total,
+        valid_ads: report.valid,
+        invalid_ads: report.invalid,
+        invalid_ratio: report.invalid_ratio,
+        image_ratio: report.image_ratio,
+        abort_reason,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

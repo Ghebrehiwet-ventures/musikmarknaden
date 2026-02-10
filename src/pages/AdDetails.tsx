@@ -10,6 +10,8 @@ import { ImageLightbox, ZoomHint } from "@/components/ImageLightbox";
 import { getAdDetails, fetchAdListings, Ad } from "@/lib/api";
 import { CATEGORIES, mapToInternalCategory } from "@/lib/categories";
 import { cn } from "@/lib/utils";
+import { SEOHead } from "@/components/SEOHead";
+import { generateAdMetaTags, generateProductSchema } from "@/lib/seo";
 
 // Ensure external URLs open in new tab
 function handleExternalClick(e: React.MouseEvent<HTMLAnchorElement>, url: string) {
@@ -523,10 +525,16 @@ export default function AdDetails() {
     );
   }
 
+  // SEO: Generate meta tags and Schema.org markup for this ad
+  const seo = ad ? generateAdMetaTags(ad) : null;
+  const schema = ad ? generateProductSchema(ad) : null;
+
   return (
-    <div className="min-h-screen bg-background pb-24 lg:pb-8">
-      {/* Main Header with Search */}
-      <Header />
+    <>
+      {seo && <SEOHead {...seo} schema={schema || undefined} />}
+      <div className="min-h-screen bg-background pb-24 lg:pb-8">
+        {/* Main Header with Search */}
+        <Header />
 
       {/* Breadcrumb Navigation */}
       <nav className="border-b border-border bg-background">
@@ -907,5 +915,6 @@ export default function AdDetails() {
         </div>
       </div>
     </div>
+    </>
   );
 }

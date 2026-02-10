@@ -26,6 +26,12 @@ export interface SyncLog {
   ads_new: number;
   ads_updated: number;
   ads_removed: number;
+  total_ads_fetched: number | null;
+  valid_ads: number | null;
+  invalid_ads: number | null;
+  invalid_ratio: number | null;
+  image_ratio: number | null;
+  abort_reason: string | null;
   error_message: string | null;
   scraping_sources?: { name: string };
 }

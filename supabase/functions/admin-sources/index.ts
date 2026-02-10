@@ -186,7 +186,19 @@ Deno.serve(async (req) => {
         try {
           let syncResult;
           
-          if (sourceData.source_type === 'firecrawl_list') {
+          const isMusikborsen =
+            (sourceData.name || '').toLowerCase().includes('musikbörsen') ||
+            (sourceData.name || '').toLowerCase().includes('musikborsen') ||
+            (sourceData.scrape_url || '').toLowerCase().includes('musikborsen.se');
+
+          if (isMusikborsen) {
+            const { data: scrapeData, error: scrapeError } = await adminClient.functions.invoke('scrape-musikborsen', {
+              body: { source_id: sourceId }
+            });
+
+            if (scrapeError) throw scrapeError;
+            syncResult = scrapeData;
+          } else if (sourceData.source_type === 'firecrawl_list') {
             // Call scrape-source function with dynamic URL from source config
             const { data: scrapeData, error: scrapeError } = await adminClient.functions.invoke('scrape-source', {
               body: { source_id: sourceId }
@@ -195,13 +207,44 @@ Deno.serve(async (req) => {
             if (scrapeError) throw scrapeError;
             syncResult = scrapeData;
           } else if (sourceData.source_type === 'parsebot') {
-            // Call existing sync-ads function with source filter
-            const { data: syncData, error: syncError } = await adminClient.functions.invoke('sync-ads', {
-              body: { source_id: sourceId }
-            });
-            
-            if (syncError) throw syncError;
-            syncResult = syncData;
+            throw new Error('Source type "parsebot" is deprecated. Use deterministic firecrawl-based sources.');
+          } else if (sourceData.source_type === 'firecrawl_crawl') {
+            throw new Error('Source type "firecrawl_crawl" is not implemented. Use firecrawl_list with a deterministic parser.');
+          }
+
+          const metrics = {
+            total_ads_fetched: syncResult?.total_ads_fetched ?? null,
+            valid_ads: syncResult?.valid_ads ?? null,
+            invalid_ads: syncResult?.invalid_ads ?? null,
+            invalid_ratio: syncResult?.invalid_ratio ?? null,
+            image_ratio: syncResult?.image_ratio ?? null,
+            abort_reason: syncResult?.abort_reason ?? null,
+          };
+
+          if (syncResult?.success === false) {
+            await adminClient
+              .from('sync_logs')
+              .update({
+                status: 'failed',
+                completed_at: new Date().toISOString(),
+                ads_found: syncResult?.ads_found ?? 0,
+                ads_new: syncResult?.ads_new ?? 0,
+                ads_updated: syncResult?.ads_updated ?? 0,
+                error_message: syncResult?.abort_reason || syncResult?.error || 'Sync failed',
+                ...metrics,
+              })
+              .eq('id', syncLog.id);
+
+            await adminClient
+              .from('scraping_sources')
+              .update({
+                last_sync_at: new Date().toISOString(),
+                last_sync_status: 'failed',
+              })
+              .eq('id', sourceId);
+
+            result = { success: false, sync_log_id: syncLog.id, ...syncResult };
+            break;
           }
 
           // Update sync log
@@ -213,6 +256,7 @@ Deno.serve(async (req) => {
               ads_found: syncResult?.ads_found ?? 0,
               ads_new: syncResult?.ads_new ?? 0,
               ads_updated: syncResult?.ads_updated ?? 0,
+              ...metrics,
             })
             .eq('id', syncLog.id);
 
@@ -235,6 +279,7 @@ Deno.serve(async (req) => {
               status: 'failed',
               completed_at: new Date().toISOString(),
               error_message: syncError instanceof Error ? syncError.message : String(syncError),
+              abort_reason: syncError instanceof Error ? syncError.message : String(syncError),
             })
             .eq('id', syncLog.id);
 

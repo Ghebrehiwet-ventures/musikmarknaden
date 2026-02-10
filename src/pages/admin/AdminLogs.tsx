@@ -66,6 +66,11 @@ export default function AdminLogs() {
     }
   };
 
+  const formatRatio = (value: number | null | undefined) => {
+    if (value === null || value === undefined || !Number.isFinite(value)) return '-';
+    return `${(value * 100).toFixed(1)}%`;
+  };
+
   if (loading) {
     return (
       <AdminLayout>
@@ -106,6 +111,11 @@ export default function AdminLogs() {
                     <TableHead>Tid</TableHead>
                     <TableHead className="text-right">Hittade</TableHead>
                     <TableHead className="text-right">Nya</TableHead>
+                    <TableHead className="text-right">Totalt</TableHead>
+                    <TableHead className="text-right">Validerade</TableHead>
+                    <TableHead className="text-right">Ogiltiga</TableHead>
+                    <TableHead className="text-right">Ogiltiga %</TableHead>
+                    <TableHead className="text-right">Bild %</TableHead>
                     <TableHead>Fel</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -142,10 +152,28 @@ export default function AdminLogs() {
                       </TableCell>
                       <TableCell className="text-right">{log.ads_found}</TableCell>
                       <TableCell className="text-right">{log.ads_new}</TableCell>
+                      <TableCell className="text-right">
+                        {log.total_ads_fetched ?? '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {log.valid_ads ?? '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {log.invalid_ads ?? '-'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatRatio(log.invalid_ratio)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatRatio(log.image_ratio)}
+                      </TableCell>
                       <TableCell>
-                        {log.error_message ? (
-                          <span className="text-sm text-destructive truncate max-w-[200px] block" title={log.error_message}>
-                            {log.error_message}
+                        {log.error_message || log.abort_reason ? (
+                          <span
+                            className="text-sm text-destructive truncate max-w-[200px] block"
+                            title={log.error_message || log.abort_reason || ''}
+                          >
+                            {log.error_message || log.abort_reason}
                           </span>
                         ) : (
                           <span className="text-muted-foreground">-</span>

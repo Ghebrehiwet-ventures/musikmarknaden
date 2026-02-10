@@ -116,27 +116,7 @@ export function MobileMenu({ onCategorySelect }: MobileMenuProps) {
             </div>
           </div>
 
-          <Separator />
-
-          {/* Account links */}
-          <div className="p-4 space-y-2">
-            <Link
-              to="/"
-              onClick={() => setIsOpen(false)}
-              className="flex items-center justify-between py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <span>Logga in</span>
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-            <Link
-              to="/"
-              onClick={() => setIsOpen(false)}
-              className="flex items-center justify-between py-2 text-sm hover:text-primary transition-colors"
-            >
-              <span>Lägg upp annons</span>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </Link>
-          </div>
+          {/* Future: Login and "Lägg upp annons" links will be added here when UGC is implemented */}
         </div>
       </SheetContent>
     </Sheet>

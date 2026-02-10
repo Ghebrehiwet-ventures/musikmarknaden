@@ -1,4 +1,4 @@
-import { Guitar, User, PlusCircle } from "lucide-react";
+import { Guitar } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { MobileMenu } from "./MobileMenu";
 import { SearchDropdown } from "./SearchDropdown";
@@ -41,25 +41,7 @@ export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderP
         <div className="flex items-center gap-1 ml-auto">
           <ThemeToggle />
           
-          {/* User/Login */}
-          <a 
-            href="/" 
-            className="flex items-center gap-2 p-2 rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors"
-            title="Logga in"
-          >
-            <User className="h-5 w-5" strokeWidth={1.5} />
-            <span className="hidden lg:inline text-sm">Logga in</span>
-          </a>
-          
-          {/* Add listing */}
-          <a 
-            href="/" 
-            className="flex items-center gap-2 p-2 rounded-full hover:bg-secondary/80 transition-colors"
-            title="Lägg upp annons"
-          >
-            <PlusCircle className="h-5 w-5" strokeWidth={1.5} />
-            <span className="hidden lg:inline text-sm">Sälj</span>
-          </a>
+          {/* Future: Login and "Sälj" buttons will be added here when UGC is implemented */}
         </div>
       </div>
 

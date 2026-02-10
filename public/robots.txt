@@ -1,14 +1,24 @@
-User-agent: Googlebot
-Allow: /
-
-User-agent: Bingbot
-Allow: /
-
-User-agent: Twitterbot
-Allow: /
-
-User-agent: facebookexternalhit
-Allow: /
+# robots.txt för Musikmarknaden
+# Genererad: 2026-02-10
 
 User-agent: *
 Allow: /
+
+# Sitemap location
+Sitemap: https://musikmarknaden.se/sitemap.xml
+
+# Allow all search engines to crawl everything
+# We want maximum visibility!
+
+# Block admin routes (if any)
+Disallow: /admin
+Disallow: /api/admin
+
+# Allow category pages
+Allow: /category/
+
+# Allow individual ads
+Allow: /ad/
+
+# Crawl-delay (optional, remove if causing issues)
+# Crawl-delay: 1

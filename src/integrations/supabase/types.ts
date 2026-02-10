@@ -219,39 +219,57 @@ export type Database = {
           ads_new: number | null
           ads_removed: number | null
           ads_updated: number | null
+          abort_reason: string | null
           completed_at: string | null
           created_at: string
           error_message: string | null
           id: string
+          image_ratio: number | null
+          invalid_ads: number | null
+          invalid_ratio: number | null
           source_id: string
           started_at: string
           status: string
+          total_ads_fetched: number | null
+          valid_ads: number | null
         }
         Insert: {
           ads_found?: number | null
           ads_new?: number | null
           ads_removed?: number | null
           ads_updated?: number | null
+          abort_reason?: string | null
           completed_at?: string | null
           created_at?: string
           error_message?: string | null
           id?: string
+          image_ratio?: number | null
+          invalid_ads?: number | null
+          invalid_ratio?: number | null
           source_id: string
           started_at?: string
           status?: string
+          total_ads_fetched?: number | null
+          valid_ads?: number | null
         }
         Update: {
           ads_found?: number | null
           ads_new?: number | null
           ads_removed?: number | null
           ads_updated?: number | null
+          abort_reason?: string | null
           completed_at?: string | null
           created_at?: string
           error_message?: string | null
           id?: string
+          image_ratio?: number | null
+          invalid_ads?: number | null
+          invalid_ratio?: number | null
           source_id?: string
           started_at?: string
           status?: string
+          total_ads_fetched?: number | null
+          valid_ads?: number | null
         }
         Relationships: [
           {

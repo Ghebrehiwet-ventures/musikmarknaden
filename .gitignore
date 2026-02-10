@@ -22,3 +22,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.env
+
+# Deployment and documentation
+*.md
+!README.md
+import-data.cjs
+musikmarknaden-full-export.json
+*.mjs
+*.sql
+!supabase/migrations/*.sql
+supabase/.temp/
+category-config.json
+verify-musikborsen.js

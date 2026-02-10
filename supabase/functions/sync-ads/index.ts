@@ -75,8 +75,32 @@ interface Ad {
   location: string;
   date: string;
   price_text: string | null;
+  price_amount: number | null;
   image_url: string;
+  source_category?: string;
 }
+
+interface ScrapeQualityConfig {
+  min_ads?: number;
+  max_invalid_ratio?: number;
+  min_image_ratio?: number;
+  require_images?: boolean;
+}
+
+interface QualityReport {
+  total: number;
+  valid: number;
+  invalid: number;
+  invalid_ratio: number;
+  image_ratio: number;
+}
+
+const DEFAULT_QUALITY_CONFIG: Required<ScrapeQualityConfig> = {
+  min_ads: 1,
+  max_invalid_ratio: 0.4,
+  min_image_ratio: 0.1,
+  require_images: false,
+};
 
 // Clean image URL by removing HTML entities and quotes
 function cleanImageUrl(url: string): string {
@@ -85,6 +109,82 @@ function cleanImageUrl(url: string): string {
     .replace(/&amp;/g, '&')      // Decode &amp;
     .replace(/^["']|["']$/g, '') // Remove quotes at start/end
     .trim();
+}
+
+function normalizeText(value: string | null | undefined): string {
+  return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeGearloopAd(ad: Ad): Ad | null {
+  const title = normalizeText(ad.title);
+  const adUrl = normalizeText(ad.ad_url);
+  const imageUrl = normalizeText(ad.image_url || '');
+  const location = normalizeText(ad.location || '');
+
+  if (!title || title.length < 3) return null;
+  if (!adUrl.startsWith('https://gearloop.se/')) return null;
+
+  return {
+    ...ad,
+    title,
+    ad_url: adUrl.split('?')[0],
+    image_url: imageUrl,
+    location,
+  };
+}
+
+function getAbortReason(
+  sourceName: string,
+  report: QualityReport,
+  config: Required<ScrapeQualityConfig>
+): string | null {
+  if (report.valid === 0) {
+    return `Quality gate failed for ${sourceName}: no valid ads parsed`;
+  }
+
+  if (report.total >= 10 && report.invalid_ratio > config.max_invalid_ratio) {
+    return `Quality gate failed for ${sourceName}: invalid_ratio=${report.invalid_ratio.toFixed(2)}`;
+  }
+
+  if (config.require_images && report.image_ratio < config.min_image_ratio) {
+    return `Quality gate failed for ${sourceName}: image_ratio=${report.image_ratio.toFixed(2)}`;
+  }
+
+  if (report.valid < config.min_ads) {
+    return `Quality gate failed for ${sourceName}: valid=${report.valid} < min_ads=${config.min_ads}`;
+  }
+
+  return null;
+}
+
+function normalizeAndValidateAds(
+  ads: Ad[],
+  sourceName: string,
+  qualityConfig?: ScrapeQualityConfig
+): { ads: Ad[]; report: QualityReport; abort_reason: string | null } {
+  const config = { ...DEFAULT_QUALITY_CONFIG, ...(qualityConfig || {}) };
+  const normalized: Ad[] = [];
+  for (const ad of ads) {
+    const cleaned = normalizeGearloopAd(ad);
+    if (cleaned) normalized.push(cleaned);
+  }
+
+  const report: QualityReport = {
+    total: ads.length,
+    valid: normalized.length,
+    invalid: Math.max(0, ads.length - normalized.length),
+    invalid_ratio: ads.length ? (ads.length - normalized.length) / ads.length : 1,
+    image_ratio: normalized.length
+      ? normalized.filter(a => a.image_url && a.image_url.length > 0).length / normalized.length
+      : 0,
+  };
+
+  console.log(
+    `Quality report for ${sourceName}: total=${report.total}, valid=${report.valid}, invalid=${report.invalid}, invalid_ratio=${report.invalid_ratio.toFixed(2)}, image_ratio=${report.image_ratio.toFixed(2)}`
+  );
+
+  const abortReason = getAbortReason(sourceName, report, config);
+  return { ads: normalized, report, abort_reason: abortReason };
 }
 
 // Extract image URLs from HTML - builds a map from ad URL to image URL
@@ -168,7 +268,12 @@ function extractImageUrlsFromHtml(rawHtml: string): Map<string, string> {
 
 // Parse ads from Gearloop markdown
 // Gearloop ads now use format: https://gearloop.se/123456-ad-title
-function parseGearloopAds(html: string, markdown: string, internalCategory: string): Ad[] {
+function parseGearloopAds(
+  html: string,
+  markdown: string,
+  internalCategory: string,
+  sourceCategory: string
+): Ad[] {
   const ads: Ad[] = [];
   
   // First extract image URLs from HTML
@@ -203,6 +308,7 @@ function parseGearloopAds(html: string, markdown: string, internalCategory: stri
       date: dateStr || new Date().toISOString().split('T')[0],
       price_text: priceText,
       image_url: imageUrl,
+      source_category: sourceCategory,
     });
   }
   
@@ -227,6 +333,7 @@ function parseGearloopAds(html: string, markdown: string, internalCategory: stri
           date: new Date().toISOString().split('T')[0],
           price_text: null,
           image_url: imageUrl,
+          source_category: sourceCategory,
         });
       }
     }
@@ -275,7 +382,7 @@ async function fetchCategoryWithFirecrawl(
       return [];
     }
     
-    const ads = parseGearloopAds(html, markdown, category.internal);
+    const ads = parseGearloopAds(html, markdown, category.internal, category.slug);
     console.log(`${category.slug}: Found ${ads.length} ads`);
     
     return ads;
@@ -307,10 +414,8 @@ async function fetchAdDetails(supabaseUrl: string, adUrl: string): Promise<any> 
 }
 
 async function fetchAllAdsFromGearloop(
-  firecrawlApiKey: string, 
-  supabase: any, 
-  supabaseUrl: string,
-  sourceId: string | null,
+  firecrawlApiKey: string,
+  existingUrlSet: Set<string>,
   sourceName: string
 ): Promise<{ allAds: Ad[], newlyInsertedUrls: Set<string> }> {
   const allAds: Ad[] = [];
@@ -318,12 +423,6 @@ async function fetchAllAdsFromGearloop(
   const newlyInsertedUrls = new Set<string>();
 
   console.log(`Starting to fetch ads from ${GEARLOOP_CATEGORIES.length} categories using Firecrawl...`);
-
-  // Get existing ad URLs to detect truly new ads
-  const { data: existingAds } = await supabase
-    .from('ad_listings_cache')
-    .select('ad_url');
-  const existingUrlSet = new Set<string>(existingAds?.map((a: any) => a.ad_url) || []);
 
   for (const category of GEARLOOP_CATEGORIES) {
     try {
@@ -344,36 +443,6 @@ async function fetchAllAdsFromGearloop(
       }
       
       console.log(`${category.slug}: ${categoryAds.length} ads (${newAdsInCategory.length} unique, total: ${allAds.length})`);
-      
-      // Batch save after each category
-      if (newAdsInCategory.length > 0) {
-        const adsToSave = newAdsInCategory.map(ad => ({
-          ad_url: ad.ad_url,
-          ad_path: ad.ad_url.split('/').pop() || '',
-          title: ad.title,
-          category: ad.category,
-          source_category: category.slug,
-          source_id: sourceId,
-          source_name: sourceName,
-          location: ad.location,
-          date: ad.date,
-          price_text: ad.price_text,
-          price_amount: null,
-          image_url: ad.image_url,
-          is_active: true,
-          last_seen_at: new Date().toISOString(),
-        }));
-        
-        const { error: upsertError } = await supabase
-          .from('ad_listings_cache')
-          .upsert(adsToSave, { onConflict: 'ad_url' });
-        
-        if (upsertError) {
-          console.error(`Failed to save ${category.slug}:`, upsertError);
-        } else {
-          console.log(`Saved ${newAdsInCategory.length} ads from ${category.slug}`);
-        }
-      }
       
       // Rate limiting - Firecrawl has limits
       await delay(1000);
@@ -604,7 +673,7 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
     // Look up source by name
     const { data: source } = await supabase
       .from('scraping_sources')
-      .select('id, name')
+      .select('id, name, config')
       .ilike('name', 'gearloop')
       .maybeSingle();
     
@@ -651,9 +720,81 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
 
   try {
     // Step 1: Fetch all ads from Gearloop using Firecrawl
-    const { allAds, newlyInsertedUrls } = await fetchAllAdsFromGearloop(firecrawlApiKey, supabase, supabaseUrl, sourceId, sourceName);
+    let existingAdsQuery = supabase
+      .from('ad_listings_cache')
+      .select('ad_url')
+      .eq('is_active', true);
+    if (sourceId) {
+      existingAdsQuery = existingAdsQuery.eq('source_id', sourceId);
+    }
+    const { data: existingAds, error: fetchError } = await existingAdsQuery;
+    if (fetchError) {
+      console.error('Failed to fetch existing ads:', fetchError);
+      if (syncLogId) {
+        await supabase
+          .from('sync_logs')
+          .update({
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+            error_message: fetchError.message,
+          })
+          .eq('id', syncLogId);
+      }
+      return { success: false, error: fetchError.message };
+    }
+    const existingUrlSet = new Set<string>(existingAds?.map((a: any) => a.ad_url) || []);
+
+    const { allAds, newlyInsertedUrls } = await fetchAllAdsFromGearloop(
+      firecrawlApiKey,
+      existingUrlSet,
+      sourceName
+    );
+
+    const qualityConfig = (sourceId
+      ? (await supabase
+          .from('scraping_sources')
+          .select('config')
+          .eq('id', sourceId)
+          .maybeSingle()).data?.config
+      : null) as ScrapeQualityConfig | null;
+
+    const { ads: validatedAds, report, abort_reason } = normalizeAndValidateAds(
+      allAds,
+      sourceName,
+      qualityConfig || undefined
+    );
     
-    if (allAds.length === 0) {
+    if (abort_reason) {
+      console.error(`Abort sync for ${sourceName}: ${abort_reason}`);
+      if (syncLogId) {
+        await supabase
+          .from('sync_logs')
+          .update({
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+            error_message: abort_reason,
+            total_ads_fetched: report.total,
+            valid_ads: report.valid,
+            invalid_ads: report.invalid,
+            invalid_ratio: report.invalid_ratio,
+            image_ratio: report.image_ratio,
+            abort_reason,
+          })
+          .eq('id', syncLogId);
+      }
+      return {
+        success: false,
+        error: abort_reason,
+        abort_reason,
+        total_ads_fetched: report.total,
+        valid_ads: report.valid,
+        invalid_ads: report.invalid,
+        invalid_ratio: report.invalid_ratio,
+        image_ratio: report.image_ratio,
+      };
+    }
+
+    if (validatedAds.length === 0) {
       console.log('No ads fetched, aborting sync');
       
       // Update sync log with failure
@@ -668,51 +809,64 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
           .eq('id', syncLogId);
       }
       
-      return { success: false, error: 'No ads fetched' };
+      return {
+        success: false,
+        error: 'No ads fetched',
+        total_ads_fetched: report.total,
+        valid_ads: report.valid,
+        invalid_ads: report.invalid,
+        invalid_ratio: report.invalid_ratio,
+        image_ratio: report.image_ratio,
+      };
     }
 
-    // Step 2: Get current active ads from cache
-    const { data: existingAds, error: fetchError } = await supabase
-      .from('ad_listings_cache')
-      .select('ad_url')
-      .eq('is_active', true);
+    const now = new Date().toISOString();
+    const adsToSave = validatedAds.map(ad => ({
+      ad_url: ad.ad_url,
+      ad_path: ad.ad_url.split('/').pop() || '',
+      title: ad.title,
+      category: ad.category,
+      source_category: ad.source_category || null,
+      source_id: sourceId,
+      source_name: sourceName,
+      location: ad.location,
+      date: ad.date,
+      price_text: ad.price_text,
+      price_amount: ad.price_amount,
+      image_url: ad.image_url,
+      is_active: true,
+      last_seen_at: now,
+    }));
 
-    if (fetchError) {
-      console.error('Failed to fetch existing ads:', fetchError);
-      
-      // Update sync log with failure
-      if (syncLogId) {
-        await supabase
-          .from('sync_logs')
-          .update({
-            status: 'failed',
-            completed_at: new Date().toISOString(),
-            error_message: fetchError.message,
-          })
-          .eq('id', syncLogId);
+    const batchSize = 100;
+    for (let i = 0; i < adsToSave.length; i += batchSize) {
+      const batch = adsToSave.slice(i, i + batchSize);
+      const { error: upsertError } = await supabase
+        .from('ad_listings_cache')
+        .upsert(batch, { onConflict: 'ad_url' });
+      if (upsertError) {
+        console.error(`Upsert error for batch ${i}:`, upsertError);
+        throw upsertError;
       }
-      
-      return { success: false, error: fetchError.message };
     }
 
-    const existingUrls = new Set<string>(existingAds?.map((a: any) => a.ad_url) || []);
-    const newUrls = new Set<string>(allAds.map(a => a.ad_url));
-
-    // Step 3: Mark removed ads as inactive
-    const removedUrls = [...existingUrls].filter((url: string) => !newUrls.has(url));
-    if (removedUrls.length > 0) {
-      console.log(`Marking ${removedUrls.length} ads as inactive`);
+    // Mark ads not seen in this scrape as inactive using last_seen_at
+    if (sourceId) {
       const { error: updateError } = await supabase
         .from('ad_listings_cache')
         .update({ is_active: false })
-        .in('ad_url', removedUrls);
-      
+        .eq('source_id', sourceId)
+        .eq('is_active', true)
+        .lt('last_seen_at', now);
       if (updateError) {
         console.error('Failed to mark ads as inactive:', updateError);
       }
     }
 
-    console.log(`All ${allAds.length} ads saved, ${newlyInsertedUrls.size} are new`);
+    const newUrls = new Set<string>(validatedAds.map(a => a.ad_url));
+    const removedCount = [...existingUrlSet].filter(url => !newUrls.has(url)).length;
+
+    console.log(`All ${validatedAds.length} ads saved, ${newlyInsertedUrls.size} are new`);
 
     // Step 4: AI categorize new "other" ads
     const aiNewResult = await aiCategorizeNewOtherAds(supabase, supabaseUrl, newlyInsertedUrls);
@@ -737,9 +891,15 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
         .update({
           status: 'completed',
           completed_at: new Date().toISOString(),
-          ads_found: allAds.length,
+          ads_found: validatedAds.length,
           ads_new: newlyInsertedUrls.size,
-          ads_removed: removedUrls.length,
+          ads_removed: removedCount,
+          total_ads_fetched: report.total,
+          valid_ads: report.valid,
+          invalid_ads: report.invalid,
+          invalid_ratio: report.invalid_ratio,
+          image_ratio: report.image_ratio,
+          abort_reason,
         })
         .eq('id', syncLogId);
       
@@ -748,13 +908,19 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
     
     return {
       success: true,
-      totalAds: allAds.length,
+      totalAds: validatedAds.length,
       newAds: newlyInsertedUrls.size,
-      removedAds: removedUrls.length,
+      removedAds: removedCount,
       aiCategorized: aiNewResult.categorized + cleanupResult.categorized,
       detailsPreloaded: preloadResult.preloaded,
       imagesBackfilled: backfillResult.backfilled,
       duration: `${duration}s`,
+      total_ads_fetched: report.total,
+      valid_ads: report.valid,
+      invalid_ads: report.invalid,
+      invalid_ratio: report.invalid_ratio,
+      image_ratio: report.image_ratio,
+      abort_reason,
     };
   } catch (error) {
     // Update sync log with failure
