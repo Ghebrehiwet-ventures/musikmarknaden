@@ -1,4 +1,10 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { 
+  isRateLimited, 
+  getRateLimitIdentifier, 
+  createRateLimitResponse,
+  isSuspiciousBot 
+} from "../_shared/rateLimit.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +18,18 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Block suspicious bots (but allow legitimate search engines)
+    if (isSuspiciousBot(req)) {
+      console.warn('Blocked suspicious bot:', req.headers.get('user-agent'));
+      return new Response('Forbidden', { status: 403 });
+    }
+
+    // Rate limiting: Max 10 requests per minute per IP
+    const identifier = getRateLimitIdentifier(req);
+    if (isRateLimited(identifier, { windowMs: 60000, maxRequests: 10 })) {
+      console.warn('Rate limit exceeded for:', identifier);
+      return createRateLimitResponse();
+    }
     // Use anon key for public access (sitemap should be publicly accessible)
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;

@@ -1,24 +1,81 @@
 # robots.txt för Musikmarknaden
-# Genererad: 2026-02-10
+# Säkerhetshärdad: 2026-02-10
 
-User-agent: *
+# === LEGITIMATE SEARCH ENGINES ===
+User-agent: Googlebot
 Allow: /
+Crawl-delay: 2
 
-# Sitemap location
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 2
+
+User-agent: Slurp
+Allow: /
+Crawl-delay: 3
+
+User-agent: DuckDuckBot
+Allow: /
+Crawl-delay: 2
+
+User-agent: Baiduspider
+Allow: /
+Crawl-delay: 5
+
+User-agent: YandexBot
+Allow: /
+Crawl-delay: 3
+
+# === BLOCK AGGRESSIVE CRAWLERS & SCRAPERS ===
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: BLEXBot
+Disallow: /
+
+User-agent: DataForSeoBot
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: serpstatbot
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+# === DEFAULT FOR OTHER BOTS (Block by default) ===
+User-agent: *
+Disallow: /
+Crawl-delay: 10
+
+# === SITEMAP ===
 Sitemap: https://musikmarknaden.se/sitemap.xml
 
-# Allow all search engines to crawl everything
-# We want maximum visibility!
-
-# Block admin routes (if any)
+# === ALWAYS BLOCK ===
 Disallow: /admin
 Disallow: /api/admin
-
-# Allow category pages
-Allow: /category/
-
-# Allow individual ads
-Allow: /ad/
-
-# Crawl-delay (optional, remove if causing issues)
-# Crawl-delay: 1
+Disallow: /.env
+Disallow: /config
