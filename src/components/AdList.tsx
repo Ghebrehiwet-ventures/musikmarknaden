@@ -70,7 +70,7 @@ export function AdList({ ads, isLoading, onAdHoverStart, onAdHoverEnd }: AdListP
 
           <div className="flex-shrink-0">
             <p className="font-bold text-primary whitespace-nowrap">
-              {ad.price_text && ad.price_amount !== null ? ad.price_text : "Pris ej angivet"}
+              {ad.price_text || (ad.price_amount ? `${ad.price_amount} kr` : "Pris ej angivet")}
             </p>
           </div>
         </Link>
