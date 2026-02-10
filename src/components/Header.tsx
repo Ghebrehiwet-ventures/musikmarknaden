@@ -15,7 +15,7 @@ export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderP
   };
 
   return (
-    <header className="border-b border-border bg-background">
+    <header className="sticky top-0 z-40 border-b border-border bg-background bg-background/95 backdrop-blur">
       {/* Main header row */}
       <div className="max-w-6xl mx-auto px-4 lg:px-6 flex h-14 items-center gap-4">
         {/* Left: Hamburger + Logo */}

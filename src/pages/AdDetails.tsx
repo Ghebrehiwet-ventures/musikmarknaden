@@ -39,10 +39,17 @@ function getSourceInfo(url: string): { name: string; domain: string } {
 }
 
 function cleanDescription(input: string, ad: Ad | null): string {
-  const lines = input
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
+  const rawLines = input.split("\n").map((l) => l.trim()).filter(Boolean);
+  // Blocket: stop at first footer/nav line so we don't show "Dela-ikon", "Villkor", etc.
+  const footerStart = /^(Dela-ikon|Anmäl annons|Villkor|Användarvillkor|Information och inspiration|Om Blocket|HouseBlocket|Gå till annonsen\s)/i;
+  let cutIndex = rawLines.length;
+  for (let i = 0; i < rawLines.length; i++) {
+    if (footerStart.test(rawLines[i])) {
+      cutIndex = i;
+      break;
+    }
+  }
+  const lines = rawLines.slice(0, cutIndex);
 
   const titleLower = ad?.title?.toLowerCase() || "";
   const locationLower = ad?.location?.toLowerCase() || "";
@@ -70,6 +77,7 @@ function cleanDescription(input: string, ad: Ad | null): string {
     /^\d{1,2}\s+(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)$/i,
     /^\d[\d\s]*kr\s*\d{1,2}\s*(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)/i,
     /^Skick:/i,
+    /\*\*Bra skick\s*[-–]\s*varsamt använd\*\*/i,
     /^(säljes|köpes)$/i,
     /sveriges marknadsplats/i,
     /om gearloop/i,
@@ -86,6 +94,25 @@ function cleanDescription(input: string, ad: Ad | null): string {
     /^Mina sidor$/i,
     /^Hem$/i,
     /^Sök$/i,
+    // Blocket footer/nav - don't show in description
+    /^Gå till annonsen/i,
+    /^Torget\//i,
+    /^Dela-ikon$/i,
+    /^Anmäl annons$/i,
+    /^Villkor\s/i,
+    /^Användarvillkor/i,
+    /^Fraktvillkor/i,
+    /^Personuppgifts- och cookiepolicy/i,
+    /^Cookieinställningar/i,
+    /^Information och inspiration/i,
+    /^Om Blocket/i,
+    /^Kontakta oss$/i,
+    /^Blocket är en del av Vend/i,
+    /^HouseBlocket/i,
+    /Vend ansvarar/i,
+    /^Läs mer$/i,
+    /^Du kanske också gillar/i,
+    /^Liknande annonser/i,
   ];
 
   const filtered = lines.filter((line) => {
@@ -703,7 +730,7 @@ export default function AdDetails() {
                   </Badge>
                 )}
 
-                {details?.condition && (
+                {details?.condition && !/köpes|sökes|köpet|sökt/i.test(title) && (
                   <Badge variant="outline" className="gap-1">
                     <CheckCircle className="h-3 w-3" />
                     {details.condition}
@@ -787,7 +814,7 @@ export default function AdDetails() {
                     </Badge>
                   )}
 
-                  {details?.condition && (
+                  {details?.condition && !/köpes|sökes|köpet|sökt/i.test(title) && (
                     <Badge variant="outline" className="gap-1">
                       <CheckCircle className="h-3 w-3" />
                       {details.condition}

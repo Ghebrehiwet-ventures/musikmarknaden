@@ -721,27 +721,43 @@ function looksLikeBadBlocketDescription(description: string): boolean {
   if (!description || description.length < 10) return true;
   if (description === 'Ingen beskrivning tillgänglig') return true;
   
-  // Check for common UI markers that indicate we scraped wrong content
+  // Check for common UI markers that indicate we scraped wrong content (footer/nav)
   const badMarkers = [
     'Torget/',
     'Villkor',
+    'Användarvillkor',
+    'Fraktvillkor',
+    'Personuppgifts- och cookiepolicy',
+    'Cookieinställningar',
     'Information och inspiration',
+    'Blocket Admin',
+    'Blocketbutik',
+    'Om Blocket',
+    'Press',
+    'Jobb',
+    'Blocket är en del av Vend',
+    'Kontakta oss',
+    'Säker handel',
+    'Frakt med köpskydd',
+    'Annonseringsregler',
     'HouseBlocket',
+    'Dela-ikon',
+    'Anmäl annons',
     'Instagram-logotyp',
     'YouTube-logotyp',
     'Facebook-logotyp',
-    'Gå till annonsen',
-    'Om Blocket',
-    'Kontakta oss',
+    'Vend ansvarar',
+    'Läs mer',
     'Bell',
+    'Notiser',
+    'Ny annons',
+    'Meddelanden',
+    'Logga in',
     'Chevron',
     'Person silhouette',
     'Checklist checkmark',
     'En del av Vend',
     'upphovsrättslagen',
-    'Logga in',
-    'Notiser',
-    'Meddelanden',
     'Du kanske också gillar',
     'Liknande annonser',
   ];
@@ -919,10 +935,13 @@ function extractBlocketDescriptionFromMarkdown(markdown: string): string {
   const lines = markdown.split('\n');
   const contentLines: string[] = [];
   
-  // Blocket-specific patterns to skip
+  // Blocket-specific patterns to skip (breadcrumb, nav, footer, UI)
   const skipPatterns = [
-    /^Gå till annonsen$/i,
+    /^Gå till annonsen/i,  // "Gå till annonsen" or "Gå till annonsen Torget/..."
     /^Torget\//i,
+    /^Typ av gitarr:\s*\*\*Elgitarrer\*\*/i,
+    /^Skick:\s*\*\*Bra skick/i,  // condition line - don't put in description
+    /^Karta\s*\d+/i,  // location line "Karta12263 Enskede"
     /^Pil (vänster|höger)/i,
     /^\(\d+\/\d+\)$/,
     /Lägg till i favoriter/i,
@@ -1004,10 +1023,35 @@ function extractBlocketDescriptionFromMarkdown(markdown: string): string {
   
   let skipRest = false;
   
+  // Stop at first line that looks like Blocket footer/nav (description is above this)
+  const footerStartPatterns = [
+    /^Dela-ikon$/i,
+    /^Anmäl annons$/i,
+    /^Villkor\s/i,
+    /^Användarvillkor/i,
+    /^Fraktvillkor/i,
+    /^Personuppgifts- och cookiepolicy/i,
+    /^Cookieinställningar/i,
+    /^Information och inspiration/i,
+    /^Blocket Admin/i,
+    /^Om Blocket$/i,
+    /^Kontakta oss$/i,
+    /^Blocket är en del av Vend/i,
+    /^HouseBlocket/i,
+    /^Gå till annonsen\s/i,
+  ];
+
   for (const line of lines) {
     // Normalize: remove invisible chars, trim
     const trimmed = line.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     if (!trimmed) continue;
+    
+    // Stop at Blocket footer (description is always above this)
+    if (footerStartPatterns.some(p => p.test(trimmed))) {
+      console.log('Blocket: Stopping at footer/nav:', trimmed.slice(0, 50));
+      skipRest = true;
+      break;
+    }
     
     // Stop at related ads sections
     if (/^Mer som det här/i.test(trimmed) ||
