@@ -43,17 +43,31 @@ export default function Index() {
 
   const allAds = data?.ads || [];
 
-  // Get unique sources with counts for the filter
+  // Get unique sources with counts for the filter (based on current category + search filter)
   const { availableSources, sourceCounts } = useMemo(() => {
+    // First filter by category and search (but NOT source) to get accurate source counts
+    const categoryFilteredAds = allAds.filter(ad => {
+      const searchLower = searchQuery.toLowerCase().trim();
+      const matchesSearchQuery = !searchLower || 
+        ad.title.toLowerCase().includes(searchLower) ||
+        ad.location.toLowerCase().includes(searchLower) ||
+        (ad.price_text?.toLowerCase().includes(searchLower));
+      
+      const matchesCat = !selectedCategory || ad.category === selectedCategory;
+      
+      return matchesSearchQuery && matchesCat;
+    });
+    
+    // Now count sources from these filtered ads
     const counts: Record<string, number> = {};
-    allAds.forEach(ad => {
+    categoryFilteredAds.forEach(ad => {
       if (ad.source_name) {
         counts[ad.source_name] = (counts[ad.source_name] || 0) + 1;
       }
     });
     const sources = Object.keys(counts).sort((a, b) => a.localeCompare(b, 'sv'));
     return { availableSources: sources, sourceCounts: counts };
-  }, [allAds]);
+  }, [allAds, selectedCategory, searchQuery]);
   
   // Parse Swedish price format: "1.199 kr" -> 1199
   const parsePriceFromText = (priceText: string | null): number | null => {
@@ -156,7 +170,7 @@ export default function Index() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
           <span className="text-sm text-muted-foreground">{totalAds} annonser{searchQuery && ` för "${searchQuery}"`}</span>
           <div className="flex items-center gap-2">
-            <SourceFilter value={selectedSource} onChange={handleSourceChange} sources={availableSources} sourceCounts={sourceCounts} totalCount={allAds.length} />
+            <SourceFilter value={selectedSource} onChange={handleSourceChange} sources={availableSources} sourceCounts={sourceCounts} totalCount={filteredAndSortedAds.length} />
             <SortSelect value={sortOption} onChange={setSortOption} />
             <div className="hidden sm:block">
               <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
