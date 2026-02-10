@@ -35,7 +35,7 @@ interface SEOMetaTags {
 /**
  * Generate SEO-optimized meta tags for an ad listing
  */
-export function generateAdMetaTags(ad: AdListing, baseUrl: string = 'https://musikmarknaden.se'): SEOMetaTags {
+export function generateAdMetaTags(ad: AdListing, baseUrl: string = 'https://www.musikmarknaden.com'): SEOMetaTags {
   // Clean title (remove extra spaces, limit length)
   const cleanTitle = ad.title.trim().slice(0, 60);
   
@@ -83,7 +83,7 @@ export function generateAdMetaTags(ad: AdListing, baseUrl: string = 'https://mus
 /**
  * Generate Schema.org Product markup (for rich snippets)
  */
-export function generateProductSchema(ad: AdListing, baseUrl: string = 'https://musikmarknaden.se') {
+export function generateProductSchema(ad: AdListing, baseUrl: string = 'https://www.musikmarknaden.com') {
   const sourceName = ad.source_name || 'Musikmarknaden';
   const lastSeen = ad.last_seen_at || ad.date || new Date().toISOString();
   
@@ -119,7 +119,7 @@ export function generateProductSchema(ad: AdListing, baseUrl: string = 'https://
 /**
  * Generate meta tags for category pages
  */
-export function generateCategoryMetaTags(category: string, baseUrl: string = 'https://musikmarknaden.se'): SEOMetaTags {
+export function generateCategoryMetaTags(category: string, baseUrl: string = 'https://www.musikmarknaden.com'): SEOMetaTags {
   const displayName = getCategoryDisplayName(category);
   const title = `Begagnad ${displayName} - Köp & Sälj | Musikmarknaden`;
   const description = `Hitta begagnad ${displayName} till salu i Sverige. Jämför priser från alla marknadsplatser. ${displayName} från Blocket, Musikbörsen, Gearloop och fler. Uppdateras dagligen.`;
@@ -144,7 +144,7 @@ export function generateCategoryMetaTags(category: string, baseUrl: string = 'ht
 /**
  * Generate meta tags for homepage
  */
-export function generateHomeMetaTags(baseUrl: string = 'https://musikmarknaden.se'): SEOMetaTags {
+export function generateHomeMetaTags(baseUrl: string = 'https://www.musikmarknaden.com'): SEOMetaTags {
   const title = 'Musikmarknaden - Hitta Begagnad Musikutrustning i Sverige';
   const description = 'Sveriges största aggregator för begagnad musikutrustning. Jämför priser från Blocket, Musikbörsen, Gearloop och fler. Hitta gitarrer, trummor, synthesizers, studio-utrustning och mer. Uppdateras 3 gånger dagligen.';
   
@@ -220,7 +220,7 @@ function getExpirationDate(lastSeenAt: string): string {
  */
 export function generateBreadcrumbSchema(
   breadcrumbs: Array<{ name: string; url: string }>,
-  baseUrl: string = 'https://musikmarknaden.se'
+  baseUrl: string = 'https://www.musikmarknaden.com'
 ) {
   const itemListElement = breadcrumbs.map((crumb, index) => ({
     '@type': 'ListItem',

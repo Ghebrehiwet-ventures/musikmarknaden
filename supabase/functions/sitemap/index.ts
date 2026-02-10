@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
     ];
 
     // Build sitemap XML
-    const baseUrl = 'https://musikmarknaden.se'; // Update with your actual domain
+    const baseUrl = 'https://www.musikmarknaden.com'; // Update with your actual domain
     
     let sitemap = '<?xml version="1.0" encoding="UTF-8"?>\n';
     sitemap += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n';

@@ -25,7 +25,7 @@ interface SEOHeadProps {
  * <SEOHead 
  *   title="Fender Stratocaster - 8,500 kr | Musikmarknaden"
  *   description="Begagnad Fender Stratocaster till salu..."
- *   canonical="https://musikmarknaden.se/ad/123"
+ *   canonical="https://www.musikmarknaden.com/ad/123"
  *   schema={productSchemaJSON}
  * />
  */
@@ -45,7 +45,7 @@ export function SEOHead({
   schema,
   noindex = false,
 }: SEOHeadProps) {
-  const baseUrl = 'https://musikmarknaden.se';
+  const baseUrl = 'https://www.musikmarknaden.com';
   
   return (
     <Helmet>
@@ -95,8 +95,8 @@ export function DefaultSEOHead() {
     <SEOHead
       title="Musikmarknaden - Hitta Begagnad Musikutrustning i Sverige"
       description="Sveriges största aggregator för begagnad musikutrustning. Jämför priser från Blocket, Musikbörsen, Gearloop och fler. Uppdateras dagligen."
-      canonical="https://musikmarknaden.se"
-      ogImage="https://musikmarknaden.se/og-home.jpg"
+      canonical="https://www.musikmarknaden.com"
+      ogImage="https://www.musikmarknaden.com/og-home.jpg"
     />
   );
 }

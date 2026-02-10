@@ -72,7 +72,7 @@ Disallow: /
 Crawl-delay: 10
 
 # === SITEMAP ===
-Sitemap: https://musikmarknaden.se/sitemap.xml
+Sitemap: https://www.musikmarknaden.com/sitemap.xml
 
 # === ALWAYS BLOCK ===
 Disallow: /admin
