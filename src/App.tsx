@@ -42,4 +42,3 @@ const App = () => (
 );
 
 export default App;
-// Force Vercel rebuild - Tue Feb 10 18:02:18 CET 2026
