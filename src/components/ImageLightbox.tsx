@@ -70,7 +70,7 @@ export function ImageLightbox({
       {/* Header */}
       <div className="flex items-center justify-between p-4 text-white">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium bg-white/10 rounded-full px-3 py-1">
+          <span className="text-sm font-medium bg-white/10 px-3 py-1 border border-white/20">
             {currentIndex + 1} / {images.length}
           </span>
           {title && (
@@ -84,7 +84,7 @@ export function ImageLightbox({
             e.stopPropagation();
             onClose();
           }}
-          className="h-10 w-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+          className="h-10 w-10 bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors border border-white/20"
           aria-label="Stäng"
         >
           <X className="h-5 w-5" />
@@ -111,7 +111,7 @@ export function ImageLightbox({
                 e.stopPropagation();
                 onPrev();
               }}
-              className="absolute left-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+              className="absolute left-4 top-1/2 -translate-y-1/2 h-12 w-12 bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors border border-white/20"
               aria-label="Föregående bild"
             >
               <ChevronLeft className="h-6 w-6 text-white" />
@@ -121,7 +121,7 @@ export function ImageLightbox({
                 e.stopPropagation();
                 onNext();
               }}
-              className="absolute right-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
+              className="absolute right-4 top-1/2 -translate-y-1/2 h-12 w-12 bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors border border-white/20"
               aria-label="Nästa bild"
             >
               <ChevronRight className="h-6 w-6 text-white" />
@@ -142,7 +142,7 @@ export function ImageLightbox({
                   onIndexChange(idx);
                 }}
                 className={cn(
-                  "flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all",
+                  "flex-shrink-0 w-16 h-16 overflow-hidden border-2 transition-all",
                   idx === currentIndex
                     ? "border-white ring-2 ring-white/30"
                     : "border-transparent opacity-50 hover:opacity-100"
@@ -166,7 +166,7 @@ export function ImageLightbox({
 export function ZoomHint({ className }: { className?: string }) {
   return (
     <div className={cn(
-      "absolute bottom-4 right-4 bg-background/80 backdrop-blur rounded-full px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity",
+      "absolute bottom-4 right-4 bg-background/80 backdrop-blur border border-border px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity",
       className
     )}>
       <ZoomIn className="h-4 w-4" />

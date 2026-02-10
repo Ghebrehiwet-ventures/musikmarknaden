@@ -163,7 +163,7 @@ function SpecificationsTable({ specifications }: { specifications: Array<{ label
   return (
     <div className="mt-8 px-4 lg:px-0">
       <h2 className="font-semibold text-lg text-foreground mb-3">Specifikationer</h2>
-      <div className="rounded-xl border border-border overflow-hidden">
+      <div className="border border-border overflow-hidden">
         <table className="w-full text-sm">
           <tbody>
             {specifications.map((spec, index) => (
@@ -230,7 +230,7 @@ function SimilarAdsCarousel({ ads, currentAdUrl }: { ads: Ad[]; currentAdUrl: st
       {canScrollLeft && (
         <button
           onClick={() => scroll('left')}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-background/90 backdrop-blur border border-border shadow-lg flex items-center justify-center hover:bg-background transition-colors -ml-5"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 bg-background/90 backdrop-blur border border-border shadow-lg flex items-center justify-center hover:bg-background transition-colors -ml-5"
           aria-label="Scrolla vänster"
         >
           <ChevronLeft className="h-5 w-5" />
@@ -239,7 +239,7 @@ function SimilarAdsCarousel({ ads, currentAdUrl }: { ads: Ad[]; currentAdUrl: st
       {canScrollRight && (
         <button
           onClick={() => scroll('right')}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-background/90 backdrop-blur border border-border shadow-lg flex items-center justify-center hover:bg-background transition-colors -mr-5"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 bg-background/90 backdrop-blur border border-border shadow-lg flex items-center justify-center hover:bg-background transition-colors -mr-5"
           aria-label="Scrolla höger"
         >
           <ChevronRight className="h-5 w-5" />
@@ -259,7 +259,7 @@ function SimilarAdsCarousel({ ads, currentAdUrl }: { ads: Ad[]; currentAdUrl: st
             className="flex-shrink-0 w-[200px] lg:w-[220px] group"
             style={{ scrollSnapAlign: 'start' }}
           >
-            <div className="aspect-square rounded-lg overflow-hidden bg-secondary mb-2">
+            <div className="aspect-square overflow-hidden bg-secondary border border-border mb-2">
               {ad.image_url ? (
                 <img
                   src={ad.image_url}
@@ -497,7 +497,7 @@ export default function AdDetails() {
       <div className="min-h-screen bg-background">
         <Header />
         <div className="flex flex-col items-center justify-center p-8 mt-20 max-w-md mx-auto text-center">
-          <div className="mb-6 p-4 rounded-full bg-destructive/10">
+          <div className="mb-6 p-4 bg-destructive/10">
             <ExternalLink className="h-8 w-8 text-destructive" />
           </div>
           <h1 className="text-xl font-bold mb-2">Annonsen finns inte längre</h1>
@@ -570,7 +570,7 @@ export default function AdDetails() {
           <div>
             {/* Image Gallery */}
             <div 
-              className="relative bg-secondary aspect-square lg:aspect-[4/3] lg:rounded-xl overflow-hidden group cursor-pointer"
+              className="relative bg-secondary aspect-square lg:aspect-[4/3] overflow-hidden group cursor-pointer"
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
               onClick={() => images.length > 0 && setLightboxOpen(true)}
@@ -596,7 +596,7 @@ export default function AdDetails() {
                   e.stopPropagation();
                   handleShare();
                 }}
-                className="lg:hidden absolute top-4 right-4 h-10 w-10 rounded-full bg-background/80 backdrop-blur flex items-center justify-center"
+                className="lg:hidden absolute top-4 right-4 h-10 w-10 bg-background/80 backdrop-blur flex items-center justify-center border border-border"
                 aria-label="Dela"
               >
                 <Share2 className="h-5 w-5" />
@@ -610,7 +610,7 @@ export default function AdDetails() {
                       e.stopPropagation();
                       prevImage();
                     }}
-                    className="hidden lg:flex absolute left-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-background/90 backdrop-blur items-center justify-center hover:bg-background transition-colors shadow-lg"
+                    className="hidden lg:flex absolute left-4 top-1/2 -translate-y-1/2 h-12 w-12 bg-background/90 backdrop-blur border border-border items-center justify-center hover:bg-background transition-colors shadow-lg"
                     aria-label="Föregående bild"
                   >
                     <ChevronLeft className="h-6 w-6" />
@@ -620,19 +620,19 @@ export default function AdDetails() {
                       e.stopPropagation();
                       nextImage();
                     }}
-                    className="hidden lg:flex absolute right-4 top-1/2 -translate-y-1/2 h-12 w-12 rounded-full bg-background/90 backdrop-blur items-center justify-center hover:bg-background transition-colors shadow-lg"
+                    className="hidden lg:flex absolute right-4 top-1/2 -translate-y-1/2 h-12 w-12 bg-background/90 backdrop-blur border border-border items-center justify-center hover:bg-background transition-colors shadow-lg"
                     aria-label="Nästa bild"
                   >
                     <ChevronRight className="h-6 w-6" />
                   </button>
 
                   {/* Image counter */}
-                  <div className="absolute top-4 left-4 lg:left-auto lg:right-4 bg-background/80 backdrop-blur rounded-full px-3 py-1.5 text-sm font-medium">
+                  <div className="absolute top-4 left-4 lg:left-auto lg:right-4 bg-background/80 backdrop-blur border border-border px-3 py-1.5 text-sm font-medium">
                     {currentImageIndex + 1} / {images.length}
                   </div>
 
                   {/* Dots indicator */}
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-background/80 backdrop-blur rounded-full px-3 py-2">
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 bg-background/80 backdrop-blur border border-border px-3 py-2">
                     {images.map((_, idx) => (
                       <button
                         key={idx}
@@ -641,7 +641,7 @@ export default function AdDetails() {
                           setCurrentImageIndex(idx);
                         }}
                         className={cn(
-                          "h-2 w-2 rounded-full transition-colors",
+                          "h-2 w-2 transition-colors",
                           idx === currentImageIndex 
                             ? "bg-primary"
                             : "bg-foreground/30 hover:bg-foreground/50"
@@ -674,7 +674,7 @@ export default function AdDetails() {
                     key={idx}
                     onClick={() => setCurrentImageIndex(idx)}
                     className={cn(
-                      "flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-all",
+                      "flex-shrink-0 w-20 h-20 overflow-hidden border-2 border-border transition-all",
                       idx === currentImageIndex 
                         ? "border-primary ring-2 ring-primary/20" 
                         : "border-transparent hover:border-border"
@@ -755,9 +755,9 @@ export default function AdDetails() {
 
             {/* Seller - Desktop */}
             {details?.seller && (details.seller.name || details.seller.username) && (
-              <div className="hidden lg:block mt-6 p-4 rounded-xl bg-secondary/50">
+              <div className="hidden lg:block mt-6 p-4 border border-border bg-secondary/50">
                 <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <div className="h-12 w-12 bg-primary/10 flex items-center justify-center border border-border">
                     <User className="h-6 w-6 text-primary" />
                   </div>
                   <div>
@@ -775,7 +775,7 @@ export default function AdDetails() {
           <div className="hidden lg:block">
             <div className="sticky top-8 space-y-6">
               {/* Price Card */}
-              <div className="p-6 rounded-xl border border-border bg-card">
+              <div className="p-6 border border-border bg-card">
                 <p className="text-3xl font-bold text-primary">{priceText}</p>
                 <h1 className="mt-3 text-xl font-semibold leading-tight">{title}</h1>
                 
@@ -825,10 +825,10 @@ export default function AdDetails() {
 
               {/* Seller Card */}
               {details?.seller && (details.seller.name || details.seller.username) && (
-                <div className="p-4 rounded-xl border border-border bg-card">
+                <div className="p-4 border border-border bg-card">
                   <h3 className="text-sm font-medium text-muted-foreground mb-3">Säljare</h3>
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <div className="h-10 w-10 bg-primary/10 flex items-center justify-center border border-border">
                       <User className="h-5 w-5 text-primary" />
                     </div>
                     <div>
