@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.backfill-descriptions]
 verify_jwt = false
+
+[functions.sync-all-sources]
+verify_jwt = false

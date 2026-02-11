@@ -29,7 +29,6 @@ export function CategoryBar({ selectedCategory, onCategoryChange }: CategoryBarP
     staleTime: 5 * 60 * 1000,
   });
 
-  // Count ads per category and filter out empty ones
   const categoryCounts = useMemo(() => {
     return (data?.ads || []).reduce((acc, ad) => {
       const cat = ad.category || 'other';

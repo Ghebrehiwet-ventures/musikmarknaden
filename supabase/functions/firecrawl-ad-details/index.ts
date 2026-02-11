@@ -75,9 +75,11 @@ Deno.serve(async (req: Request) => {
     
     // Return cached data if less than 7 days old
     const cachedImagesCount = Array.isArray(cached.images) ? cached.images.length : 0;
+    const cachedDesc = cached.description || '';
     const hasBadBlocketImages = sourceType === 'blocket' && cachedImagesCount <= 1;
-    const hasBadBlocketDescription = sourceType === 'blocket' && looksLikeBadBlocketDescription(cached.description || '');
-    const bypassCacheForBlocket = hasBadBlocketImages || hasBadBlocketDescription;
+    const hasBadBlocketDescription = sourceType === 'blocket' && looksLikeBadBlocketDescription(cachedDesc);
+    const hasSellerBioDescription = sourceType === 'blocket' && looksLikeSellerBio(cachedDesc);
+    const bypassCacheForBlocket = hasBadBlocketImages || hasBadBlocketDescription || hasSellerBioDescription;
 
     if (daysSinceUpdate < 7 && !bypassCacheForBlocket) {
         console.log('✓ Cache hit for:', ad_url, `(${daysSinceUpdate.toFixed(1)} days old)`);
@@ -716,6 +718,55 @@ function extractMusikborsenLocation(markdown: string): string {
   return extractLocation(markdown);
 }
 
+// Check if Blocket text looks like seller bio / shop "om oss" instead of the actual ad body
+function looksLikeSellerBio(description: string): boolean {
+  if (!description || description.length < 200) return false;
+  const lower = description.toLowerCase();
+  const bioMarkers = [
+    'välkommen på besök',
+    'besök möjligt',
+    'telefon och mail',
+    'medlem i:',
+    'medlem i ',
+    'sedan 19',  // "sedan 1986", "sedan 1995"
+    'bygger och reparerar',
+    'bra paketerbjudanden',
+    'inbyte',
+    'externa visningar',
+    'studiebesök',
+    'endagskurser',
+    'kurser jag kan erbjuda',
+    'specialitéer',
+    'specialiteter',
+    'kulturskola',
+    'folkhögskola',
+    'musikhögskola',
+    'i blocket-butiken visas',
+    'blocket-butiken visas',
+    'ateljén',
+    'stråkstudion',
+    'violinbyggare',
+    'violinbyggarmästare',
+    'sveriges violinbyggare',
+    's.v.i.t.',
+    'branschförbundet',
+    'www.',   // seller's own website
+    '.com',
+    'dagar i veckan',
+    'efter överenskommelse',
+    'ta gärna kontakt med mig',
+    'fråga gärna om',
+  ];
+  let hits = 0;
+  for (const m of bioMarkers) {
+    if (lower.includes(m)) hits++;
+  }
+  // Long text + several bio markers = seller bio, not ad
+  if (hits >= 2 && description.length > 400) return true;
+  if (hits >= 1 && description.length > 1200) return true;
+  return false;
+}
+
 // Check if a Blocket description looks like UI garbage instead of real ad content
 function looksLikeBadBlocketDescription(description: string): boolean {
   if (!description || description.length < 10) return true;
@@ -789,16 +840,20 @@ function looksLikeBadBlocketDescription(description: string): boolean {
 function extractBlocketDescription(markdown: string, html: string): string {
   console.log('Blocket: Extracting description from HTML and markdown');
   
-  // Strategy 1: Try JSON-LD structured data (cleanest source)
+  // Strategy 1: Try JSON-LD structured data (cleanest source) – must not be seller bio
   const jsonLdDescription = extractBlocketDescriptionFromJsonLd(html);
-  if (jsonLdDescription && jsonLdDescription.length > 20 && !looksLikeBadBlocketDescription(jsonLdDescription)) {
+  if (jsonLdDescription && jsonLdDescription.length > 20
+      && !looksLikeBadBlocketDescription(jsonLdDescription)
+      && !looksLikeSellerBio(jsonLdDescription)) {
     console.log('Blocket: Got description from JSON-LD, length:', jsonLdDescription.length);
     return jsonLdDescription;
   }
   
-  // Strategy 2: Try Next.js __NEXT_DATA__ (contains full ad data)
+  // Strategy 2: Try Next.js __NEXT_DATA__ – prefer SHORT ad body over long seller bio
   const nextDataDescription = extractBlocketDescriptionFromNextData(html);
-  if (nextDataDescription && nextDataDescription.length > 20 && !looksLikeBadBlocketDescription(nextDataDescription)) {
+  if (nextDataDescription && nextDataDescription.length > 20
+      && !looksLikeBadBlocketDescription(nextDataDescription)
+      && !looksLikeSellerBio(nextDataDescription)) {
     console.log('Blocket: Got description from __NEXT_DATA__, length:', nextDataDescription.length);
     return nextDataDescription;
   }
@@ -837,7 +892,7 @@ function extractBlocketDescriptionFromJsonLd(html: string): string | null {
               .replace(/&#(\d+);/g, (_: string, code: string) => String.fromCharCode(parseInt(code)))
               .trim();
             
-            if (desc.length > 20) {
+            if (desc.length > 20 && !looksLikeSellerBio(desc)) {
               return desc;
             }
           }
@@ -867,14 +922,15 @@ function extractBlocketDescriptionFromNextData(html: string): string | null {
     const data = JSON.parse(match[1]);
     
     // Recursively search for description candidates in the nested structure
-    const candidates = findDescriptionCandidates(data, 0);
+    let candidates = findDescriptionCandidates(data, 0);
+    // Exclude seller bio / shop "om oss" text
+    candidates = candidates.filter(c => !looksLikeSellerBio(c));
+    // Prefer SHORT description = actual ad body; long text is often seller bio
+    candidates.sort((a, b) => a.length - b.length);
     
-    // Sort by length (longer is usually better for descriptions)
-    candidates.sort((a, b) => b.length - a.length);
-    
-    // Return the best candidate that passes quality checks
+    // Return the best candidate that passes quality checks (prefer ad-like length)
     for (const candidate of candidates) {
-      if (candidate.length > 50 && !looksLikeBadBlocketDescription(candidate)) {
+      if (candidate.length > 20 && !looksLikeBadBlocketDescription(candidate)) {
         return candidate;
       }
     }
@@ -1040,6 +1096,24 @@ function extractBlocketDescriptionFromMarkdown(markdown: string): string {
     /^HouseBlocket/i,
     /^Gå till annonsen\s/i,
   ];
+  // Stop at seller bio / shop "om oss" (actual ad description is above this)
+  const sellerBioStartPatterns = [
+    /^Försäljning av (violin|viola|cello|stränginstrument)/i,
+    /^När du ska köpa din nya/i,
+    /^Bra paketerbjudanden\.?\s*Inbyte/i,
+    /^Externa visningar/i,
+    /^Kurser\s*$/i,
+    /^Jag kan erbjuda.*kurser/i,
+    /^Medlem i\s*:/i,
+    /^Specialitéer\s*[-–]/i,
+    /^Välkommen på besök/i,
+    /^Besök möjligt/i,
+    /^Telefon och mail besvaras/i,
+    /^Violinbyggarmästare\s+\w+/i,
+    /^bygger och reparerar alla stråkinstrument/i,
+    /^Gå gärna in på hemsidan/i,
+    /^www\.\w+\.(com|se)/i,
+  ];
 
   for (const line of lines) {
     // Normalize: remove invisible chars, trim
@@ -1049,6 +1123,12 @@ function extractBlocketDescriptionFromMarkdown(markdown: string): string {
     // Stop at Blocket footer (description is always above this)
     if (footerStartPatterns.some(p => p.test(trimmed))) {
       console.log('Blocket: Stopping at footer/nav:', trimmed.slice(0, 50));
+      skipRest = true;
+      break;
+    }
+    // Stop at seller bio so we keep only the actual ad body
+    if (sellerBioStartPatterns.some(p => p.test(trimmed))) {
+      console.log('Blocket: Stopping at seller bio:', trimmed.slice(0, 60));
       skipRest = true;
       break;
     }
@@ -1103,6 +1183,24 @@ function extractBlocketDescriptionFromMarkdown(markdown: string): string {
     .filter(line => line.trim().length > 0);
   desc = uniqueLines.join('\n');
   
+  // If we still got seller-bio text (e.g. stop patterns didn't match), keep only first part = ad body
+  if (looksLikeSellerBio(desc)) {
+    const maxAdLen = 900;
+    const cutAt = desc.indexOf('Välkommen!');
+    const cutAt2 = desc.indexOf('Bra paketerbjudanden');
+    const cutAt3 = desc.indexOf('Externa visningar');
+    const firstBio = Math.min(
+      cutAt > 0 ? cutAt : maxAdLen,
+      cutAt2 > 0 ? cutAt2 : maxAdLen,
+      cutAt3 > 0 ? cutAt3 : maxAdLen,
+      maxAdLen
+    );
+    if (firstBio > 50) {
+      desc = desc.substring(0, firstBio).trim();
+      if (!/[\n.!?]$/.test(desc)) desc += '.';
+      console.log('Blocket: Trimmed seller bio from markdown, kept', desc.length, 'chars');
+    }
+  }
   // Cap at 2000 chars
   if (desc.length > 2000) {
     desc = desc.substring(0, 2000) + '...';

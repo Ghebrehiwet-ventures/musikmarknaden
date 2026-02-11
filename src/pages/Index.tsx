@@ -13,6 +13,7 @@ import { fetchAdListings, Ad } from "@/lib/api";
 import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
 import { SEOHead } from "@/components/SEOHead";
 import { generateHomeMetaTags, generateCategoryMetaTags } from "@/lib/seo";
+import { categoryMatchesFilter } from "@/lib/categories";
 
 export default function Index() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -53,7 +54,7 @@ export default function Index() {
         ad.location.toLowerCase().includes(searchLower) ||
         (ad.price_text?.toLowerCase().includes(searchLower));
       
-      const matchesCat = !selectedCategory || ad.category === selectedCategory;
+      const matchesCat = categoryMatchesFilter(ad.category, selectedCategory);
       
       return matchesSearchQuery && matchesCat;
     });
@@ -85,7 +86,7 @@ export default function Index() {
         ad.location.toLowerCase().includes(searchLower) ||
         (ad.price_text?.toLowerCase().includes(searchLower));
       
-      const matchesCat = !selectedCategory || ad.category === selectedCategory;
+      const matchesCat = categoryMatchesFilter(ad.category, selectedCategory);
       const matchesSource = !selectedSource || ad.source_name === selectedSource;
       
       return matchesSearchQuery && matchesCat && matchesSource;

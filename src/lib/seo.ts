@@ -154,7 +154,7 @@ export function generateHomeMetaTags(baseUrl: string = 'https://www.musikmarknad
     canonical: baseUrl,
     ogTitle: title,
     ogDescription: description,
-    ogImage: `${baseUrl}/og-home.jpg`,
+    ogImage: `${baseUrl}/og-home.png`,
     ogUrl: baseUrl,
     ogType: 'website',
     twitterCard: 'summary_large_image',
@@ -169,6 +169,7 @@ export function generateHomeMetaTags(baseUrl: string = 'https://www.musikmarknad
  */
 function getCategoryDisplayName(category: string): string {
   const names: Record<string, string> = {
+    'instrument': 'Instrument',
     'guitars-bass': 'Gitarrer & Basar',
     'drums-percussion': 'Trummor & Slagverk',
     'keys-pianos': 'Keyboards & Pianon',
@@ -180,6 +181,8 @@ function getCategoryDisplayName(category: string): string {
     'wind-brass': 'Blåsinstrument',
     'strings-other': 'Stränginstrument',
     'accessories-parts': 'Tillbehör & Delar',
+    'software-computers': 'Mjukvara & Datorer',
+    'services': 'Tjänster',
     'other': 'Övrigt',
   };
   return names[category] || category;

@@ -5,9 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { adminApi, SyncLog } from '@/lib/adminApi';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, Clock, AlertCircle } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { sv } from 'date-fns/locale';
+
+/** Synk som varit "running" längre än detta räknas som avbruten (timeout/krasch) */
+const RUNNING_MAX_MINUTES = 10;
 
 export default function AdminLogs() {
   const [logs, setLogs] = useState<SyncLog[]>([]);
@@ -33,7 +36,24 @@ export default function AdminLogs() {
     fetchLogs();
   }, []);
 
-  const getStatusBadge = (status: string) => {
+  const isRunningStale = (startedAt: string) => {
+    const start = new Date(startedAt).getTime();
+    const now = Date.now();
+    return (now - start) / (60 * 1000) > RUNNING_MAX_MINUTES;
+  };
+
+  const getStatusBadge = (log: SyncLog) => {
+    const status = log.status;
+    const runningButStale = status === 'running' && !log.completed_at && isRunningStale(log.started_at);
+
+    if (runningButStale) {
+      return (
+        <Badge variant="outline" className="text-amber-600 border-amber-600">
+          <AlertCircle className="w-3 h-3 mr-1" />
+          Avbruten
+        </Badge>
+      );
+    }
     switch (status) {
       case 'completed':
         return (
@@ -125,7 +145,7 @@ export default function AdminLogs() {
                       <TableCell className="font-medium">
                         {log.scraping_sources?.name || 'Okänd'}
                       </TableCell>
-                      <TableCell>{getStatusBadge(log.status)}</TableCell>
+                      <TableCell>{getStatusBadge(log)}</TableCell>
                       <TableCell>
                         <div className="flex flex-col">
                           <span className="text-sm">

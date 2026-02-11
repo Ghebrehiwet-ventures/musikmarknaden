@@ -1472,11 +1472,16 @@ Deno.serve(async (req) => {
       qualityConfig
     );
 
-    // Apply category mappings
-    products = products.map(p => ({
-      ...p,
-      category: categoryMap.get(p.category.toLowerCase()) || p.category,
-    }));
+    // Apply category mappings: use source_category first (what admin configures), then category
+    const productsMapped = products.map(p => {
+      const bySource = (p.source_category || '').trim().toLowerCase();
+      const byCategory = (p.category || '').trim().toLowerCase();
+      const mapped =
+        (bySource && categoryMap.get(bySource)) ||
+        (byCategory && categoryMap.get(byCategory)) ||
+        p.category;
+      return { ...p, category: mapped };
+    });
 
     if (!previewMode && abort_reason) {
       return new Response(
@@ -1497,12 +1502,16 @@ Deno.serve(async (req) => {
     // Only run in full sync mode (not preview) to save API calls
     const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     if (!previewMode && lovableApiKey) {
-      const otherProducts = products.filter(p => p.category === 'other');
+      const otherProducts = productsMapped.filter(p => p.category === 'other');
       if (otherProducts.length > 0) {
         console.log(`AI categorization: ${otherProducts.length} products in 'other' category`);
         
         const AI_CATEGORIES = [
-          { id: 'instrument', label: 'Instrument', examples: 'Gitarrer, basar, trummor, keyboards, blåsinstrument' },
+          { id: 'guitars-bass', label: 'Gitarrer & Basar', examples: 'Gitarrer, elgitarr, akustisk gitarr, bas, elbas' },
+          { id: 'drums-percussion', label: 'Trummor & Slagverk', examples: 'Trummor, trumset, cymbaler, percussion' },
+          { id: 'keys-pianos', label: 'Keyboards & Pianon', examples: 'Piano, keyboard, elpiano, klaviatur' },
+          { id: 'wind-brass', label: 'Blåsinstrument', examples: 'Saxofon, trumpet, klarinett, flöjt, dragspel' },
+          { id: 'strings-other', label: 'Stränginstrument', examples: 'Fiol, cello, ukulele, mandolin' },
           { id: 'amplifiers', label: 'Förstärkare', examples: 'Gitarr/basförstärkare, Kemper, Helix' },
           { id: 'pedals-effects', label: 'Pedaler & Effekter', examples: 'Overdrive, delay, reverb, looper' },
           { id: 'studio', label: 'Studio', examples: 'Mikrofoner, ljudkort/interface, monitorer, preamps' },
@@ -1540,10 +1549,14 @@ ${AI_CATEGORIES.map(c => `- ${c.id}: ${c.label} (${c.examples})`).join('\n')}
 REGLER:
 - Focusrite Vocaster = studio (audio interface)
 - Roland GAIA = synth-modular
-- Ibanez AZ/RG/S = instrument (gitarr)
+- Ibanez AZ/RG/S = guitars-bass (gitarr)
 - Audio interface = studio
 - Synthesizer = synth-modular
-- Allt med gitarr/bas-modellnamn = instrument`
+- Gitarr/bas/elgitarr/elbas = guitars-bass
+- Trummor/cymbaler/slagverk = drums-percussion
+- Piano/keyboard/elpiano = keys-pianos
+- Saxofon/trumpet/klarinett/dragspel = wind-brass
+- Fiol/cello/ukulele = strings-other`
                   },
                   {
                     role: 'user',
@@ -1570,10 +1583,10 @@ REGLER:
                       if (idx >= 0 && idx < batch.length && AI_CATEGORIES.some(c => c.id === category)) {
                         const product = batch[idx];
                         // Find and update in main products array
-                        const mainIdx = products.findIndex(p => p.ad_url === product.ad_url);
+                        const mainIdx = productsMapped.findIndex(p => p.ad_url === product.ad_url);
                         if (mainIdx >= 0 && category !== 'other') {
                           console.log(`AI: "${product.title}" -> ${category}`);
-                          products[mainIdx].category = category;
+                          productsMapped[mainIdx].category = category;
                         }
                       }
                     }
@@ -1595,14 +1608,14 @@ REGLER:
           }
         }
         
-        const remainingOther = products.filter(p => p.category === 'other').length;
+        const remainingOther = productsMapped.filter(p => p.category === 'other').length;
         console.log(`AI categorization complete: ${otherProducts.length - remainingOther} products recategorized, ${remainingOther} remain in 'other'`);
       }
     }
 
     // PREVIEW MODE: Return products without saving
     if (previewMode) {
-      const previewProducts = products.slice(0, previewLimit);
+      const previewProducts = productsMapped.slice(0, previewLimit);
       console.log(`Preview complete for ${source.name}: returning ${previewProducts.length} products`);
       
       return new Response(
@@ -1611,7 +1624,7 @@ REGLER:
           preview: true,
           source_name: source.name,
           products: previewProducts,
-          total_found: products.length,
+          total_found: productsMapped.length,
           total_ads_fetched: report.total,
           valid_ads: report.valid,
           invalid_ads: report.invalid,
@@ -1625,7 +1638,7 @@ REGLER:
 
     // FULL SYNC: Prepare ads for upsert
     const now = new Date().toISOString();
-    const adsToUpsert = products.map(product => ({
+    const adsToUpsert = productsMapped.map(product => ({
       ad_url: product.ad_url,
       ad_path: new URL(product.ad_url).pathname,
       title: product.title,
@@ -1695,7 +1708,7 @@ REGLER:
       JSON.stringify({
         success: true,
         source_name: source.name,
-        ads_found: products.length,
+        ads_found: productsMapped.length,
         ads_new: newCount,
         ads_updated: upsertedCount - newCount,
         total_ads_fetched: report.total,

@@ -13,6 +13,9 @@ import {
   Wrench, 
   MoreHorizontal,
   LayoutGrid,
+  Drum,
+  Wind,
+  Music,
   LucideIcon
 } from "lucide-react";
 
@@ -23,7 +26,11 @@ export interface Category {
 }
 
 export const CATEGORIES: Category[] = [
-  { id: "instrument", label: "Instrument", icon: Guitar },
+  { id: "guitars-bass", label: "Gitarrer & Basar", icon: Guitar },
+  { id: "drums-percussion", label: "Trummor & Slagverk", icon: Drum },
+  { id: "keys-pianos", label: "Keyboards & Pianon", icon: Piano },
+  { id: "wind-brass", label: "Blåsinstrument", icon: Wind },
+  { id: "strings-other", label: "Stränginstrument", icon: Music },
   { id: "amplifiers", label: "Förstärkare", icon: Volume2 },
   { id: "pedals-effects", label: "Pedaler & Effekter", icon: SlidersHorizontal },
   { id: "studio", label: "Studio", icon: Mic },
@@ -36,6 +43,17 @@ export const CATEGORIES: Category[] = [
 ];
 
 export const ALL_CATEGORY_ICON = LayoutGrid;
+
+/** For old URLs with ?category=instrument – match all instrument subcategories */
+const INSTRUMENT_IDS = ["instrument", "guitars-bass", "drums-percussion", "keys-pianos", "wind-brass", "strings-other"] as const;
+
+export function categoryMatchesFilter(adCategory: string, selectedCategory: string | null): boolean {
+  if (!selectedCategory) return true;
+  if (selectedCategory === "instrument") {
+    return INSTRUMENT_IDS.includes(adCategory as (typeof INSTRUMENT_IDS)[number]);
+  }
+  return adCategory === selectedCategory;
+}
 
 // Mapping from external/scraped category names to internal category IDs
 // Add new mappings here as we encounter them from scraped sources
@@ -172,5 +190,7 @@ export function mapToInternalCategory(externalCategory: string | null | undefine
  */
 export function getCategoryLabel(categoryId: string): string {
   const category = CATEGORIES.find(c => c.id === categoryId);
-  return category?.label || "Other";
+  if (category) return category.label;
+  if (categoryId === "instrument") return "Instrument";
+  return "Övrigt";
 }

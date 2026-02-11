@@ -6,15 +6,19 @@ const corsHeaders = {
 };
 
 const CATEGORIES = [
-  { id: 'instrument', label: 'Instrument', examples: 'Gitarrer (Fender, Gibson, G&L, PRS, Ibanez, Squier, Gretsch), basar (Warwick, Sandberg, Spector), trummor (Pearl, Tama, DW), keyboards (Yamaha, Roland), blåsinstrument, stråkinstrument' },
-  { id: 'amplifiers', label: 'Förstärkare', examples: 'Gitarrförstärkare (Marshall, Vox, Fender, Mesa Boogie, Orange, Blackstar), basförstärkare (Ampeg, Markbass, Aguilar), Kemper, Quad Cortex, Neural DSP, Line 6 Helix' },
-  { id: 'pedals-effects', label: 'Pedaler & Effekter', examples: 'Overdrive, distortion, fuzz, delay, reverb, looper, wah (Boss, MXR, Strymon, Eventide, TC Electronic, Walrus, JHS, EHX, Keeley)' },
-  { id: 'studio', label: 'Studio', examples: 'Mikrofoner (Shure SM57/58, Neumann, AKG, Rode), ljudkort/interface (Focusrite, Universal Audio, RME, MOTU), mixerbord, studiomonitorer (Genelec, Adam, KRK, Yamaha HS), kompressorer, preamps' },
-  { id: 'dj-live', label: 'DJ & Live', examples: 'DJ-controller, turntables (Technics, Pioneer CDJ), PA-system (QSC, RCF, JBL), aktiva högtalare, ljusutrustning, DMX, moving heads' },
-  { id: 'synth-modular', label: 'Synth & Modulärt', examples: 'Synthesizers (Moog, Korg, Roland Juno/Jupiter, Nord, Sequential Prophet, Arturia), Eurorack-moduler, sequencers, samplers (Elektron, MPC), analoga och digitala syntar' },
-  { id: 'software-computers', label: 'Mjukvara & Datorer', examples: 'DAW-programvara, plugins, VST, datorer för musik' },
-  { id: 'accessories-parts', label: 'Tillbehör & Delar', examples: 'Kablar, case/väskor, stativ, strängar, plektrum, gitarrem, pedalboards, pickups (Seymour Duncan, DiMarzio, EMG), reservdelar' },
-  { id: 'services', label: 'Tjänster', examples: 'Lektioner, replokaler, reparationstjänster, uthyrning, sökes-annonser för musiker' },
+  { id: 'guitars-bass', label: 'Gitarrer & Basar', examples: 'Gitarrer (Fender, Gibson, Ibanez, Squier, Gretsch), basar (Warwick, Sandberg, Precision, Jazz Bass)' },
+  { id: 'drums-percussion', label: 'Trummor & Slagverk', examples: 'Trummor (Pearl, Tama, DW), cymbaler (Zildjian, Sabian), percussion' },
+  { id: 'keys-pianos', label: 'Keyboards & Pianon', examples: 'Piano, keyboard, elpiano, Rhodes, Wurlitzer, Yamaha, Roland' },
+  { id: 'wind-brass', label: 'Blåsinstrument', examples: 'Saxofon, trumpet, klarinett, flöjt, dragspel' },
+  { id: 'strings-other', label: 'Stränginstrument', examples: 'Fiol, cello, ukulele, mandolin' },
+  { id: 'amplifiers', label: 'Förstärkare', examples: 'Gitarrförstärkare (Marshall, Vox, Fender, Mesa Boogie, Orange), basförstärkare (Ampeg, Markbass), Kemper, Helix' },
+  { id: 'pedals-effects', label: 'Pedaler & Effekter', examples: 'Overdrive, delay, reverb, looper, wah (Boss, MXR, Strymon)' },
+  { id: 'studio', label: 'Studio', examples: 'Mikrofoner (Shure, Neumann), ljudkort/interface (Focusrite, UA, RME), monitorer, preamps' },
+  { id: 'dj-live', label: 'DJ & Live', examples: 'DJ-controller, turntables (Technics, Pioneer), PA-system, ljusutrustning' },
+  { id: 'synth-modular', label: 'Synth & Modulärt', examples: 'Synthesizers (Moog, Korg, Roland, Nord), Eurorack, samplers (Elektron, MPC)' },
+  { id: 'software-computers', label: 'Mjukvara & Datorer', examples: 'DAW, plugins, VST, datorer för musik' },
+  { id: 'accessories-parts', label: 'Tillbehör & Delar', examples: 'Kablar, case, strängar, pickups, pedalboards' },
+  { id: 'services', label: 'Tjänster', examples: 'Lektioner, replokaler, reparation, uthyrning' },
   { id: 'other', label: 'Övrigt', examples: 'Litteratur, noter, musikmemorabilia - ENDAST om det verkligen inte passar någon annan kategori' },
 ];
 
@@ -49,40 +53,20 @@ ${categoryList}
 
 VIKTIGA REGLER (FÖLJ DESSA NOGGRANT):
 
-1. INSTRUMENT (gitarrer, basar, trummor, etc.):
-   - Alla gitarrer: Fender, Gibson, G&L, PRS, Ibanez, Schecter, ESP, Squier, Gretsch, Rickenbacker, Taylor, Martin
-   - Alla basar: Precision, Jazz Bass, Warwick, Sandberg, Spector, Stingray, Höfner
-   - Alla trummor: Pearl, Tama, DW, Sonor, Mapex, Ludwig, cymbaler (Zildjian, Sabian, Meinl)
-   - Keyboards som spelar ljud: Rhodes, Wurlitzer, Clavinet
-   - Blås- och stråkinstrument
+1. GITARRER & BASAR (guitars-bass): Alla gitarrer och basar - Fender, Gibson, Ibanez, Squier, Warwick, Sandberg
+2. TRUMMOR & SLAGVERK (drums-percussion): Trummor, trumset, cymbaler (Zildjian, Sabian), percussion
+3. KEYBOARDS & PIANON (keys-pianos): Piano, keyboard, elpiano, Rhodes, Wurlitzer, Yamaha, Roland
+4. BLÅSINSTRUMENT (wind-brass): Saxofon, trumpet, klarinett, flöjt, dragspel
+5. STRÄNGINSTRUMENT (strings-other): Fiol, cello, ukulele, mandolin
 
-2. FÖRSTÄRKARE (separata enheter som förstärker ljud):
-   - Gitarrförstärkare: Marshall, Vox, Fender (Twin, Deluxe, Bassman), Mesa Boogie, Orange, Blackstar, Engl
-   - Basförstärkare: Ampeg, Markbass, Aguilar, Hartke, Gallien-Krueger
-   - Digitala: Kemper, Line 6 Helix, Fractal Axe-FX, Neural DSP Quad Cortex
-   - "Combo", "topteil", "topp", "head", "cabinet", "cab" = förstärkare
-
-3. PEDALER & EFFEKTER:
-   - Alla fotpedaler: overdrive, distortion, fuzz, delay, reverb, chorus, wah, looper
-   - Märken: Boss, MXR, Strymon, Eventide, TC Electronic, Walrus, JHS, EHX
-
-4. SYNTH & MODULÄRT (INTE instrument):
-   - Synthesizers: Moog, Korg (Minilogue, Prologue), Roland (Juno, Jupiter), Nord, Prophet, Arturia
-   - Eurorack och modulärt
-   - Samplers: Elektron (Digitakt, Octatrack), MPC, Maschine
-
-5. STUDIO:
-   - Mikrofoner: Shure SM57/58, Neumann, AKG, Rode
-   - Ljudkort/interface: Focusrite Scarlett, Universal Audio Apollo, RME
-   - Monitorer: Genelec, Adam, Yamaha HS, KRK
-
-6. DJ & LIVE:
-   - DJ-utrustning: CDJ, controller, turntables (Technics, Pioneer)
-   - PA-system, aktiva högtalare
-   - Ljusutrustning
+6. FÖRSTÄRKARE (amplifiers): Gitarr/basförstärkare, Kemper, Helix, "combo", "head", "cab"
+7. PEDALER & EFFEKTER (pedals-effects): Overdrive, delay, reverb, wah, looper (Boss, MXR, Strymon)
+8. STUDIO (studio): Mikrofoner, ljudkort/interface, monitorer
+9. DJ & LIVE (dj-live): DJ-controller, turntables, PA-system, ljusutrustning
+10. SYNTH & MODULÄRT (synth-modular): Synthesizers, Eurorack, samplers (Elektron, MPC)
 
 EXEMPEL PÅ KNEPIGA FALL:
-- "Fender Stratocaster" = instrument (gitarr)
+- "Fender Stratocaster" = guitars-bass (gitarr)
 - "Fender Twin Reverb" = amplifiers (gitarrförstärkare)
 - "Nord Stage 3" = synth-modular (digital keyboard/synth)
 - "Boss DS-1" = pedals-effects (distortionpedal)
@@ -172,11 +156,20 @@ Svara ENDAST med ett JSON-objekt i detta format:
   // Label to ID mapping for tolerant parsing
   const labelToId: Record<string, string> = {};
   const synonyms: Record<string, string> = {
-    'instrument': 'instrument',
-    'instruments': 'instrument',
-    'gitarr': 'instrument',
-    'bas': 'instrument',
-    'trummor': 'instrument',
+    'instrument': 'guitars-bass',
+    'instruments': 'guitars-bass',
+    'gitarr': 'guitars-bass',
+    'guitars': 'guitars-bass',
+    'bas': 'guitars-bass',
+    'bass': 'guitars-bass',
+    'trummor': 'drums-percussion',
+    'drums': 'drums-percussion',
+    'percussion': 'drums-percussion',
+    'piano': 'keys-pianos',
+    'keyboard': 'keys-pianos',
+    'keyboards': 'keys-pianos',
+    'blås': 'wind-brass',
+    'stränginstrument': 'strings-other',
     'förstärkare': 'amplifiers',
     'amplifier': 'amplifiers',
     'amp': 'amplifiers',

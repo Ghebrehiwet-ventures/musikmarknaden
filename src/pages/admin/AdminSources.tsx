@@ -34,6 +34,7 @@ export default function AdminSources() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
   const [previewing, setPreviewing] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [previewDialogOpen, setPreviewDialogOpen] = useState(false);
@@ -143,6 +144,51 @@ export default function AdminSources() {
     }
   };
 
+  const handleSyncAll = async () => {
+    const activeSources = sources.filter((s) => s.is_active);
+    if (activeSources.length === 0) {
+      toast({
+        title: 'Inga aktiva källor',
+        description: 'Aktivera minst en källa först',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setSyncingAll(true);
+    let ok = 0;
+    let failed = 0;
+    for (let i = 0; i < activeSources.length; i++) {
+      const source = activeSources[i];
+      setSyncing(source.id);
+      try {
+        await adminApi.triggerSync(source.id);
+        ok++;
+        toast({
+          title: `Synkar alla (${i + 1}/${activeSources.length})`,
+          description: `${source.name} klar. ${ok} lyckade, ${failed} misslyckade.`,
+        });
+        await fetchSources();
+      } catch (error) {
+        failed++;
+        toast({
+          title: `${source.name} misslyckades`,
+          description: error instanceof Error ? error.message : 'Ett fel uppstod',
+          variant: 'destructive',
+        });
+      }
+      setSyncing(null);
+      if (i < activeSources.length - 1) {
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+    setSyncingAll(false);
+    toast({
+      title: 'Synka alla klar',
+      description: `${ok} källor synkade, ${failed} misslyckade.`,
+    });
+    fetchSources();
+  };
+
   const handlePreview = async (id: string) => {
     setPreviewing(id);
     try {
@@ -190,18 +236,35 @@ export default function AdminSources() {
   return (
     <AdminLayout>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Datakällor</h1>
-            <p className="text-muted-foreground">Hantera sajter som skrapas</p>
-          </div>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button onClick={openCreateDialog}>
-                <Plus className="w-4 h-4 mr-2" />
-                Lägg till källa
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="text-3xl font-bold">Datakällor</h1>
+              <p className="text-muted-foreground">Hantera sajter som skrapas</p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                data-testid="sync-all-button"
+                variant="default"
+                size="default"
+                onClick={handleSyncAll}
+                disabled={syncingAll || sources.filter((s) => s.is_active).length === 0}
+                title={sources.filter((s) => s.is_active).length === 0 ? 'Aktivera minst en källa först' : 'Synka alla aktiva källor'}
+              >
+                {syncingAll ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                )}
+                Synka alla
               </Button>
-            </DialogTrigger>
+              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button onClick={openCreateDialog}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Lägg till källa
+                  </Button>
+                </DialogTrigger>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
@@ -276,7 +339,9 @@ export default function AdminSources() {
                 </Button>
               </DialogFooter>
             </DialogContent>
-          </Dialog>
+              </Dialog>
+            </div>
+          </div>
         </div>
 
         <Card>

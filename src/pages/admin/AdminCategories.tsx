@@ -122,6 +122,22 @@ export default function AdminCategories() {
     setNewExternal('');
   };
 
+  const suggestInternalCategory = (externalName: string): string => {
+    const n = externalName.toLowerCase();
+    if (/\bsynt(ar|er|e)?\b|synth|modulärt|eurorack/i.test(n)) return 'synth-modular';
+    if (/\b(gitarr|bas|elgitarr|elbas|akustisk)\b/i.test(n)) return 'guitars-bass';
+    if (/\b(trummor|slagverk|cymbal|percussion|drum)\b/i.test(n)) return 'drums-percussion';
+    if (/\b(piano|keyboard|elpiano|klaviatur)\b/i.test(n)) return 'keys-pianos';
+    if (/\b(blås|sax|trumpet|klarinett|flöjt|dragspel)\b/i.test(n)) return 'wind-brass';
+    if (/\b(förstärkare|amp|combo)\b/i.test(n)) return 'amplifiers';
+    if (/\b(pedal|effekt)\b/i.test(n)) return 'pedals-effects';
+    if (/\b(studio|mikrofon|interface)\b/i.test(n)) return 'studio';
+    if (/\b(dj|live|pa)\b/i.test(n)) return 'dj-live';
+    if (/\b(tillbehör|delar|kabel|case)\b/i.test(n)) return 'accessories-parts';
+    if (/\b(övrigt|other)\b/i.test(n)) return 'other';
+    return 'other';
+  };
+
   const handleAddFromSource = (sourceCategory: string) => {
     if (mappings.some(m => m.external_category.toLowerCase() === sourceCategory.toLowerCase())) {
       toast({
@@ -131,7 +147,8 @@ export default function AdminCategories() {
       });
       return;
     }
-    setMappings([...mappings, { external_category: sourceCategory, internal_category: 'other' }]);
+    const suggested = suggestInternalCategory(sourceCategory);
+    setMappings([...mappings, { external_category: sourceCategory, internal_category: suggested }]);
   };
 
   const handleRemove = (index: number) => {
@@ -234,7 +251,7 @@ export default function AdminCategories() {
                       )}
                     </CardTitle>
                     <CardDescription>
-                      Unika source_category-värden från annonser
+                      Unika source_category-värden från annonser. Mappa dessa till interna kategorier nedan – mappningarna används vid nästa synk och minskar antalet i Övrigt.
                     </CardDescription>
                   </div>
                   <Button variant="outline" size="sm" onClick={refreshSourceCategories} disabled={loadingSourceCategories}>
@@ -298,7 +315,7 @@ export default function AdminCategories() {
               <CardHeader>
                 <CardTitle>Konfigurerade mappningar</CardTitle>
                 <CardDescription>
-                  Externa kategorier mappade till interna kategorier
+                  Externa kategorier → interna kategorier. Vid nästa sync används dessa (t.ex. &quot;Övrigt beg/vintage&quot; → Gitarrer & Basar) så att färre annonser hamnar i Övrigt.
                 </CardDescription>
               </CardHeader>
               <CardContent>

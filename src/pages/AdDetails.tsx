@@ -136,7 +136,7 @@ function cleanDescription(input: string, ad: Ad | null): string {
   return unique.join("\n").trim();
 }
 
-// Component to render formatted description with paragraphs and bullet lists
+// Component to render formatted description with paragraphs, line breaks and bullet lists
 function FormattedDescription({ text }: { text: string }) {
   // Split by double newlines into paragraphs
   const blocks = text.split(/\n\n+/).filter(Boolean);
@@ -146,20 +146,25 @@ function FormattedDescription({ text }: { text: string }) {
       {blocks.map((block, blockIndex) => {
         const lines = block.split('\n').filter(Boolean);
         
-        // Check if this block is a bullet list (most lines start with •)
-        const bulletLines = lines.filter(line => line.trim().startsWith('•'));
-        const isBulletList = bulletLines.length > 0 && bulletLines.length >= lines.length * 0.5;
+        // Check if this block is a bullet list (lines start with • or ✔ or -)
+        const bulletChars = ['•', '✔', '✓', '📍', '-'];
+        const bulletLines = lines.filter(line => {
+          const t = line.trim();
+          return bulletChars.some(c => t.startsWith(c)) || /^\d+\.\s/.test(t);
+        });
+        const isBulletList = bulletLines.length > 0 && bulletLines.length >= Math.min(2, lines.length);
         
         if (isBulletList) {
-          // Render as a styled list
           return (
-            <ul key={blockIndex} className="space-y-2">
+            <ul key={blockIndex} className="space-y-2 list-none pl-0">
               {lines.map((line, lineIndex) => {
-                const cleanLine = line.trim().replace(/^•\s*/, '');
-                if (!cleanLine) return null;
+                const trimmed = line.trim();
+                if (!trimmed) return null;
+                const cleanLine = trimmed.replace(/^[•✔✓📍\-]\s*/, '').replace(/^\d+\.\s*/, '');
                 return (
-                  <li key={lineIndex} className="text-sm">
-                    {cleanLine}
+                  <li key={lineIndex} className="flex gap-2 text-sm">
+                    <span className="text-muted-foreground shrink-0">{trimmed.charAt(0)}</span>
+                    <span>{cleanLine || trimmed}</span>
                   </li>
                 );
               })}
@@ -167,15 +172,14 @@ function FormattedDescription({ text }: { text: string }) {
           );
         }
         
-        // Check if this is a separator
         if (block.trim() === '---') {
           return <hr key={blockIndex} className="border-border" />;
         }
         
-        // Regular paragraph - join lines with spaces
+        // Regular block: preserve single line breaks (whitespace-pre-line)
         return (
-          <p key={blockIndex}>
-            {lines.join(' ')}
+          <p key={blockIndex} className="whitespace-pre-line">
+            {block}
           </p>
         );
       })}
@@ -798,9 +802,9 @@ export default function AdDetails() {
             )}
           </div>
 
-          {/* Right Column - Desktop Sticky Panel */}
-          <div className="hidden lg:block">
-            <div className="sticky top-8 space-y-6">
+          {/* Right Column - Desktop Sticky Panel (follows on scroll) */}
+          <div className="hidden lg:block lg:self-start">
+            <div className="sticky top-24 space-y-6">
               {/* Price Card */}
               <div className="p-6 border border-border bg-card">
                 <p className="text-3xl font-bold text-primary">{priceText}</p>

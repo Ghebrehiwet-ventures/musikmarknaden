@@ -96,7 +96,7 @@ export function DefaultSEOHead() {
       title="Musikmarknaden - Hitta Begagnad Musikutrustning i Sverige"
       description="Sveriges största aggregator för begagnad musikutrustning. Jämför priser från Blocket, Musikbörsen, Gearloop och fler. Uppdateras dagligen."
       canonical="https://www.musikmarknaden.com"
-      ogImage="https://www.musikmarknaden.com/og-home.jpg"
+      ogImage="https://www.musikmarknaden.com/og-home.png"
     />
   );
 }
