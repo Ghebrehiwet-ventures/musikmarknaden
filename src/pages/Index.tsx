@@ -173,9 +173,7 @@ export default function Index() {
           <div className="flex items-center gap-2">
             <SourceFilter value={selectedSource} onChange={handleSourceChange} sources={availableSources} sourceCounts={sourceCounts} totalCount={filteredAndSortedAds.length} />
             <SortSelect value={sortOption} onChange={setSortOption} />
-            <div className="hidden sm:block">
-              <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
-            </div>
+            <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
           </div>
         </div>
 

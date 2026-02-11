@@ -13,6 +13,12 @@ import { cn } from "@/lib/utils";
 import { SEOHead } from "@/components/SEOHead";
 import { generateAdMetaTags, generateProductSchema } from "@/lib/seo";
 
+/** Remove Markdown formatting so ** and *** etc. don't show as raw characters */
+function stripMarkdownFormatting(s: string): string {
+  if (!s || typeof s !== "string") return s;
+  return s.replace(/\*{2,}/g, "").replace(/_{2,}/g, "");
+}
+
 // Ensure external URLs open in new tab
 function handleExternalClick(e: React.MouseEvent<HTMLAnchorElement>, url: string) {
   e.preventDefault();
@@ -138,8 +144,8 @@ function cleanDescription(input: string, ad: Ad | null): string {
 
 // Component to render formatted description with paragraphs, line breaks and bullet lists
 function FormattedDescription({ text }: { text: string }) {
-  // Split by double newlines into paragraphs
-  const blocks = text.split(/\n\n+/).filter(Boolean);
+  const cleaned = stripMarkdownFormatting(text);
+  const blocks = cleaned.split(/\n\n+/).filter(Boolean);
   
   return (
     <div className="text-muted-foreground leading-relaxed space-y-4">
@@ -261,19 +267,19 @@ function SimilarAdsCarousel({ ads, currentAdUrl }: { ads: Ad[]; currentAdUrl: st
       {canScrollLeft && (
         <button
           onClick={() => scroll('left')}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 bg-background/90 backdrop-blur border border-border shadow-lg flex items-center justify-center hover:bg-background transition-colors -ml-5"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-card border-2 border-border text-foreground shadow-md flex items-center justify-center hover:bg-muted hover:border-muted-foreground/30 transition-colors -ml-5"
           aria-label="Scrolla vänster"
         >
-          <ChevronLeft className="h-5 w-5" />
+          <ChevronLeft className="h-5 w-5" strokeWidth={2} />
         </button>
       )}
       {canScrollRight && (
         <button
           onClick={() => scroll('right')}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 bg-background/90 backdrop-blur border border-border shadow-lg flex items-center justify-center hover:bg-background transition-colors -mr-5"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-card border-2 border-border text-foreground shadow-md flex items-center justify-center hover:bg-muted hover:border-muted-foreground/30 transition-colors -mr-5"
           aria-label="Scrolla höger"
         >
-          <ChevronRight className="h-5 w-5" />
+          <ChevronRight className="h-5 w-5" strokeWidth={2} />
         </button>
       )}
 
@@ -737,7 +743,7 @@ export default function AdDetails() {
                 {details?.condition && !/köpes|sökes|köpet|sökt/i.test(title) && (
                   <Badge variant="outline" className="gap-1">
                     <CheckCircle className="h-3 w-3" />
-                    {details.condition}
+                    {stripMarkdownFormatting(details.condition).trim().replace(/\s+/g, " ")}
                   </Badge>
                 )}
               </div>
@@ -821,7 +827,7 @@ export default function AdDetails() {
                   {details?.condition && !/köpes|sökes|köpet|sökt/i.test(title) && (
                     <Badge variant="outline" className="gap-1">
                       <CheckCircle className="h-3 w-3" />
-                      {details.condition}
+                      {stripMarkdownFormatting(details.condition).trim().replace(/\s+/g, " ")}
                     </Badge>
                   )}
                 </div>
