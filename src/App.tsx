@@ -13,6 +13,11 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminSources from "./pages/admin/AdminSources";
 import AdminCategories from "./pages/admin/AdminCategories";
 import AdminLogs from "./pages/admin/AdminLogs";
+import OmTjansten from "./pages/OmTjansten";
+import Kontakt from "./pages/Kontakt";
+import Anvandarvillkor from "./pages/Anvandarvillkor";
+import Integritetspolicy from "./pages/Integritetspolicy";
+import CookiePolicy from "./pages/CookiePolicy";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +41,11 @@ const App = () => (
             <Route path="/admin/categories/" element={<AdminCategories />} />
             <Route path="/admin/logs" element={<AdminLogs />} />
             <Route path="/admin/logs/" element={<AdminLogs />} />
+            <Route path="/om" element={<OmTjansten />} />
+            <Route path="/kontakt" element={<Kontakt />} />
+            <Route path="/anvandarvillkor" element={<Anvandarvillkor />} />
+            <Route path="/integritetspolicy" element={<Integritetspolicy />} />
+            <Route path="/cookies" element={<CookiePolicy />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -42,31 +42,35 @@ async function categorizeWithAI(
 
 const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v1/scrape';
 
-// All categories from Gearloop - URLs to scrape
-const GEARLOOP_CATEGORIES = [
-  { slug: 'akustiska-gitarrer-alla', internal: 'instrument' },
-  { slug: 'basar-alla', internal: 'instrument' },
-  { slug: 'blasinstrument-alla', internal: 'instrument' },
-  { slug: 'elgitarrer-alla', internal: 'instrument' },
-  { slug: 'strakinstrument-alla', internal: 'instrument' },
-  { slug: 'klaviatur-alla', internal: 'instrument' },
-  { slug: 'trummor-percussion-alla', internal: 'instrument' },
-  { slug: 'synthar-alla', internal: 'synth-modular' },
-  { slug: 'eurorack-alla', internal: 'synth-modular' },
-  { slug: 'dj-utrustning-alla', internal: 'dj-live' },
-  { slug: 'pedaler-effekter-alla', internal: 'pedals-effects' },
-  { slug: 'gitarrforstarkare-alla', internal: 'amplifiers' },
-  { slug: 'basforstarkare-alla', internal: 'amplifiers' },
-  { slug: 'ovriga-forstarkare-alla', internal: 'amplifiers' },
-  { slug: 'mikrofoner-alla', internal: 'studio' },
-  { slug: 'pa-Live-alla', internal: 'dj-live' },
-  { slug: 'api-500-series-alla', internal: 'studio' },
-  { slug: 'studio-scenutrustning-alla', internal: 'studio' },
-  { slug: 'datorer-alla', internal: 'software-computers' },
-  { slug: 'mjukvara-plug-ins-alla', internal: 'software-computers' },
-  { slug: 'reservdelar-ovrigt-alla', internal: 'accessories-parts' },
-  { slug: 'studiomobler-alla', internal: 'studio' },
-];
+// Gearloop category slug -> internal category mapping
+// Category pages on Gearloop all show the same global listing, so we paginate
+// the main page (gearloop.se/?page=N) and use the category link in each ad card
+// to determine the internal category.
+const GEARLOOP_CATEGORY_MAP: Record<string, string> = {
+  'akustiska-gitarrer': 'guitars-bass',
+  'basar': 'guitars-bass',
+  'elgitarrer': 'guitars-bass',
+  'strakinstrument': 'strings-other',
+  'blasinstrument': 'wind-brass',
+  'klaviatur': 'keys-pianos',
+  'trummor-percussion': 'drums-percussion',
+  'synthar': 'synth-modular',
+  'eurorack': 'synth-modular',
+  'dj-utrustning': 'dj-live',
+  'pa-live': 'dj-live',
+  'pedaler-effekter': 'pedals-effects',
+  'gitarrforstarkare': 'amplifiers',
+  'basforstarkare': 'amplifiers',
+  'ovriga-forstarkare': 'amplifiers',
+  'mikrofoner': 'studio',
+  'api-500-series': 'studio',
+  'studio-scenutrustning': 'studio',
+  'studiomobler': 'studio',
+  'datorer': 'software-computers',
+  'mjukvara-plug-ins': 'software-computers',
+  'reservdelar-ovrigt': 'accessories-parts',
+  'service-reparation': 'services',
+};
 
 interface Ad {
   title: string;
@@ -296,134 +300,118 @@ function extractAllAdUrlsFromHtml(html: string): Set<string> {
   return urls;
 }
 
-// Parse ads from Gearloop markdown
-// Gearloop ads now use format: https://gearloop.se/123456-ad-title
-function parseGearloopAds(
-  html: string,
-  markdown: string,
-  internalCategory: string,
-  sourceCategory: string
-): Ad[] {
+/** Resolve Gearloop category slug to internal category using the ad card's category link */
+function resolveGearloopCategory(html: string, adUrl: string): string {
+  // Each ad card on Gearloop links to its category, e.g. (pedaler-effekter-alla)
+  // We find the category link nearest to this ad URL in the HTML
+  const escaped = adUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const nearbyRegex = new RegExp(escaped + '[\\s\\S]{0,500}?\\(([a-z0-9-]+)-alla\\)', 'i');
+  const m = nearbyRegex.exec(html);
+  if (m) {
+    const slug = m[1];
+    if (GEARLOOP_CATEGORY_MAP[slug]) return GEARLOOP_CATEGORY_MAP[slug];
+  }
+  // Also try in markdown: [Category](category-slug-alla)
+  return 'other';
+}
+
+/** Extract category from markdown context around an ad */
+function resolveGearloopCategoryFromMarkdown(markdown: string, adUrl: string): string {
+  const escaped = adUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Look for category link after the ad URL: [Pedaler & Effekter](pedaler-effekter-alla)
+  const re = new RegExp(escaped + '[\\s\\S]{0,800}?\\[([^\\]]+)\\]\\(([a-z0-9-]+)-alla\\)', 'i');
+  const m = re.exec(markdown);
+  if (m) {
+    const slug = m[2];
+    if (GEARLOOP_CATEGORY_MAP[slug]) return GEARLOOP_CATEGORY_MAP[slug];
+  }
+  return 'other';
+}
+
+// Parse ads from Gearloop main page (gearloop.se/?page=N)
+// Each ad has a category link in the HTML that tells us which category it belongs to
+function parseGearloopAds(html: string, markdown: string): Ad[] {
   const ads: Ad[] = [];
-  
-  // First extract image URLs from HTML
   const imageMap = extractImageUrlsFromHtml(html);
-  
-  // Parse markdown format: #### [Title](https://gearloop.se/123456-slug)
-  // Followed by: price date
+
+  // Primary: Parse markdown format: #### [Title](https://gearloop.se/123456-slug)
   const adBlockRegex = /####\s*\[([^\]]+)\]\((https:\/\/gearloop\.se\/\d+[^)]+)\)\s*\n\s*([^\n]*)/g;
-  
+
   let match;
   while ((match = adBlockRegex.exec(markdown)) !== null) {
     const title = match[1].trim();
-    const adUrl = match[2].trim().split('?')[0]; // Remove query params
+    const adUrl = match[2].trim().split('?')[0];
     const priceAndDate = match[3].trim();
-    
-    // Parse price and date from "5 000 kr 17 dec" format
+
     const priceMatch = priceAndDate.match(/^([\d\s]+)\s*kr/);
     const priceText = priceMatch ? priceMatch[1].replace(/\s/g, '') + ' kr' : null;
-    
-    // Extract date (at the end after price)
     const dateMatch = priceAndDate.match(/(\d+\s+\w+)$/);
     const dateStr = dateMatch ? dateMatch[1] : '';
-    
-    // Look up image URL from our extracted map
     const imageUrl = imageMap.get(adUrl) || '';
-    
+
+    // Resolve category from the markdown/html context
+    let category = resolveGearloopCategoryFromMarkdown(markdown, adUrl);
+    if (category === 'other') category = resolveGearloopCategory(html, adUrl);
+
+    // Extract location from markdown (line with city name after the ad block)
+    let location = '';
+    const locRegex = new RegExp(adUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\s\\S]{0,300}?\\n([A-ZÅÄÖ][a-zåäö]+(?:\\s[A-ZÅÄÖ]?[a-zåäö]+)*)\\n', 'i');
+    const locMatch = locRegex.exec(markdown);
+    if (locMatch) location = locMatch[1].trim();
+
     ads.push({
       title,
       ad_url: adUrl,
-      category: internalCategory,
-      location: '',
+      category,
+      location,
       date: dateStr || new Date().toISOString().split('T')[0],
       price_text: priceText,
       image_url: imageUrl,
-      source_category: sourceCategory,
+      source_category: '',
     });
   }
-  
-  // Fallback: Also look for bare URLs with numeric prefix pattern in markdown (always run to catch any we missed)
+
+  // Fallback: bare URLs in markdown
   const urlRegex = /https:\/\/gearloop\.se\/(\d+)-([^)\s"]+)/g;
-  const seenFromMarkdown = new Set(ads.map((a) => a.ad_url));
+  const seenUrls = new Set(ads.map((a) => a.ad_url));
   while ((match = urlRegex.exec(markdown)) !== null) {
     const adUrl = match[0].split('?')[0];
-    if (seenFromMarkdown.has(adUrl)) continue;
-    seenFromMarkdown.add(adUrl);
+    if (seenUrls.has(adUrl)) continue;
+    seenUrls.add(adUrl);
     const slug = match[2];
     const title = slug.replace(/-/g, ' ');
     const imageUrl = imageMap.get(adUrl) || '';
+    let category = resolveGearloopCategoryFromMarkdown(markdown, adUrl);
+    if (category === 'other') category = resolveGearloopCategory(html, adUrl);
 
-    ads.push({
-      title,
-      ad_url: adUrl,
-      category: internalCategory,
-      location: '',
-      date: new Date().toISOString().split('T')[0],
-      price_text: null,
-      image_url: imageUrl,
-      source_category: sourceCategory,
-    });
+    ads.push({ title, ad_url: adUrl, category, location: '', date: new Date().toISOString().split('T')[0], price_text: null, image_url: imageUrl, source_category: '' });
   }
 
-  // Fallback: Ad URLs we found in HTML (cards/links) but not in markdown
-  const existingUrls = new Set(ads.map((a) => a.ad_url));
-  for (const [adUrl, imageUrl] of imageMap) {
-    const normalized = adUrl.split('?')[0];
-    if (existingUrls.has(normalized)) continue;
-    const slugMatch = normalized.match(/\/\d+-([^/]+)$/);
-    const title = slugMatch ? slugMatch[1].replace(/-/g, ' ') : normalized;
-
-    ads.push({
-      title,
-      ad_url: normalized,
-      category: internalCategory,
-      location: '',
-      date: new Date().toISOString().split('T')[0],
-      price_text: null,
-      image_url: imageUrl || '',
-      source_category: sourceCategory,
-    });
-    existingUrls.add(normalized);
-  }
-
-  // Fallback: ALL links to gearloop.se/ID-slug in HTML (even without image match) – Firecrawl may render cards differently
+  // Fallback: all ad URLs from HTML
   const allHtmlUrls = extractAllAdUrlsFromHtml(html);
   for (const adUrl of allHtmlUrls) {
     const normalized = adUrl.split('?')[0];
-    if (existingUrls.has(normalized)) continue;
+    if (seenUrls.has(normalized)) continue;
+    seenUrls.add(normalized);
     const slugMatch = normalized.match(/\/\d+-([^/]+)$/);
     const title = slugMatch ? slugMatch[1].replace(/-/g, ' ') : normalized;
     const imageUrl = imageMap.get(normalized) || '';
+    const category = resolveGearloopCategory(html, normalized);
 
-    ads.push({
-      title,
-      ad_url: normalized,
-      category: internalCategory,
-      location: '',
-      date: new Date().toISOString().split('T')[0],
-      price_text: null,
-      image_url: imageUrl,
-      source_category: sourceCategory,
-    });
-    existingUrls.add(normalized);
+    ads.push({ title, ad_url: normalized, category, location: '', date: new Date().toISOString().split('T')[0], price_text: null, image_url: imageUrl, source_category: '' });
   }
 
   const withImages = ads.filter((a) => a.image_url).length;
-  console.log(`Found ${ads.length} ads in category (${withImages} with images)`);
+  console.log(`Gearloop: Found ${ads.length} ads on page (${withImages} with images)`);
   return ads;
 }
 
-const MAX_GEARLOOP_PAGES_PER_CATEGORY = 15; // Paginate until empty or this many pages
+const MAX_GEARLOOP_PAGES = 80; // ~25 ads/page × 80 = ~2000 ads max
 
-// Fetch ads from a single Gearloop category page using Firecrawl
-async function fetchCategoryWithFirecrawl(
-  firecrawlApiKey: string,
-  category: { slug: string; internal: string },
-  page: number = 1
-): Promise<Ad[]> {
-  const base = `https://gearloop.se/kategori/${category.slug}`;
-  const url = page <= 1 ? base : `${base}?page=${page}`;
-  console.log(`Fetching category: ${url}`);
+// Fetch a single page from Gearloop main listing
+async function fetchGearloopPage(firecrawlApiKey: string, page: number): Promise<Ad[]> {
+  const url = page <= 1 ? 'https://gearloop.se/' : `https://gearloop.se/?page=${page}`;
+  console.log(`Gearloop: Fetching page ${page}: ${url}`);
 
   try {
     const response = await fetch(FIRECRAWL_API_URL, {
@@ -435,14 +423,14 @@ async function fetchCategoryWithFirecrawl(
       body: JSON.stringify({
         url,
         formats: ['markdown', 'html'],
-        onlyMainContent: false, // Need full HTML to extract thumbnail images
-        waitFor: 5000, // Allow time for lazy-loaded cards to render
+        onlyMainContent: false,
+        waitFor: 5000,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Firecrawl error for ${category.slug} page ${page}: ${response.status} - ${errorText}`);
+      console.error(`Gearloop: Firecrawl error page ${page}: ${response.status} - ${errorText}`);
       return [];
     }
 
@@ -451,16 +439,13 @@ async function fetchCategoryWithFirecrawl(
     const markdown = data.data?.markdown || data.markdown || '';
 
     if (!html && !markdown) {
-      console.warn(`No content for ${category.slug} page ${page}`);
+      console.warn(`Gearloop: No content for page ${page}`);
       return [];
     }
 
-    const ads = parseGearloopAds(html, markdown, category.internal, category.slug);
-    console.log(`${category.slug} page ${page}: Found ${ads.length} ads`);
-
-    return ads;
+    return parseGearloopAds(html, markdown);
   } catch (error) {
-    console.error(`Error fetching ${category.slug} page ${page}:`, error);
+    console.error(`Gearloop: Error fetching page ${page}:`, error);
     return [];
   }
 }
@@ -495,38 +480,54 @@ async function fetchAllAdsFromGearloop(
   const seenUrls = new Set<string>();
   const newlyInsertedUrls = new Set<string>();
 
-  console.log(`Starting to fetch ads from ${GEARLOOP_CATEGORIES.length} categories using Firecrawl (with pagination)...`);
+  console.log(`Gearloop: Paginating main listing (gearloop.se/?page=N)...`);
 
-  for (const category of GEARLOOP_CATEGORIES) {
+  let page = 1;
+  let emptyPages = 0;
+
+  while (page <= MAX_GEARLOOP_PAGES) {
     try {
-      let page = 1;
-      let totalInCategory = 0;
+      const pageAds = await fetchGearloopPage(firecrawlApiKey, page);
 
-      while (page <= MAX_GEARLOOP_PAGES_PER_CATEGORY) {
-        const categoryAds = await fetchCategoryWithFirecrawl(firecrawlApiKey, category, page);
-
-        if (categoryAds.length === 0) break;
-
-        for (const ad of categoryAds) {
-          if (!seenUrls.has(ad.ad_url)) {
-            seenUrls.add(ad.ad_url);
-            allAds.push(ad);
-            totalInCategory++;
-            if (!existingUrlSet.has(ad.ad_url)) {
-              newlyInsertedUrls.add(ad.ad_url);
-            }
-          }
+      if (pageAds.length === 0) {
+        emptyPages++;
+        if (emptyPages >= 2) {
+          console.log(`Gearloop: 2 consecutive empty pages at page ${page}, stopping.`);
+          break;
         }
-
-        console.log(`${category.slug} page ${page}: ${categoryAds.length} ads (${totalInCategory} unique in category, total: ${allAds.length})`);
-        if (categoryAds.length < 10) break; // Likely last page
         page++;
         await delay(1000);
+        continue;
       }
 
-      await delay(1000);
+      emptyPages = 0;
+      let newOnPage = 0;
+
+      for (const ad of pageAds) {
+        if (!seenUrls.has(ad.ad_url)) {
+          seenUrls.add(ad.ad_url);
+          allAds.push(ad);
+          newOnPage++;
+          if (!existingUrlSet.has(ad.ad_url)) {
+            newlyInsertedUrls.add(ad.ad_url);
+          }
+        }
+      }
+
+      console.log(`Gearloop page ${page}: ${pageAds.length} ads (${newOnPage} new unique, total: ${allAds.length})`);
+
+      // If we got very few new ads, we're likely seeing repeats — stop
+      if (newOnPage === 0) {
+        console.log(`Gearloop: No new unique ads on page ${page}, stopping.`);
+        break;
+      }
+
+      page++;
+      await delay(1500); // Rate limit
     } catch (error) {
-      console.error(`Error processing ${category.slug}:`, error);
+      console.error(`Gearloop: Error on page ${page}:`, error);
+      page++;
+      await delay(2000);
     }
   }
 
