@@ -132,7 +132,7 @@ export function Footer() {
             © 2026 Musikmarknaden.com · En oberoende söktjänst för begagnad musikutrustning.
           </span>
           <span className="text-xs text-muted-foreground">
-            Utvecklad av <a href="https://www.storamusikhuset.se" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors underline">Stora Musikhuset Solutions Stockholm AB</a>
+            Utvecklad av <a href="https://www.storamusikhuset.se" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors underline">Stora Musikhuset</a> Solutions Stockholm AB
           </span>
         </div>
       </div>
