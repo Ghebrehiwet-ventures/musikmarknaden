@@ -351,7 +351,11 @@ function parseAdDetails(
   } else if (sourceType === 'gear4music') {
     description = extractGear4MusicDescription(html);
   } else if (sourceType === 'dlxmusic') {
-    description = extractDlxDescription(markdown, html);
+    // Direct fetch sets metadata.description from og:description – use it when present
+    const metaDesc = (metadata?.description as string)?.trim();
+    description = (metaDesc && metaDesc.length > 15)
+      ? metaDesc.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      : extractDlxDescription(markdown, html);
   } else {
     description = extractGearloopDescription(markdown);
   }
@@ -718,11 +722,20 @@ function extractDlxDescription(markdown: string, html: string): string {
       }
     }
 
-    // Try og:description from HTML
-    const ogDesc = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
-    if (ogDesc && ogDesc[1].length > 30) {
-      console.log('DLX: Using og:description');
-      return ogDesc[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').trim();
+    // Try og:description (attribute order can vary)
+    const ogDesc = html.match(/<meta[^>]*(?:property="og:description"[^>]*content="([^"]+)"|content="([^"]+)"[^>]*property="og:description")[^>]*>/i);
+    const ogText = ogDesc ? (ogDesc[1] || ogDesc[2] || '').trim() : '';
+    if (ogText.length > 15) {
+      console.log('DLX: Using og:description from HTML');
+      return ogText.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+    }
+    // Fallback: standard meta description
+    const metaDesc = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"[^>]*>/i)
+      || html.match(/<meta[^>]*content="([^"]+)"[^>]*name="description"[^>]*>/i);
+    const metaText = metaDesc ? (metaDesc[1] || '').trim() : '';
+    if (metaText.length > 15) {
+      console.log('DLX: Using meta name=description');
+      return metaText.replace(/&amp;/g, '&').replace(/&quot;/g, '"').trim();
     }
   }
 

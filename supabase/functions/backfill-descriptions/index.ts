@@ -73,11 +73,13 @@ Deno.serve(async (req) => {
     // Parse optional parameters
     let limit = 50;
     let batchSize = 10;
-    
+    let sourceId: string | null = null;
+
     try {
       const body = await req.json();
       if (body.limit) limit = Math.min(body.limit, 100); // Cap at 100
       if (body.batchSize) batchSize = Math.min(body.batchSize, 20); // Cap at 20
+      if (body.source_id && typeof body.source_id === 'string') sourceId = body.source_id.trim() || null;
     } catch {
       // No body or invalid JSON - use defaults
     }
@@ -87,14 +89,21 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch ads where description IS NULL, prioritizing newest first
-    const { data: adsWithoutDesc, error } = await supabase
+    // Fetch ads where description IS NULL, optionally for one source
+    let query = supabase
       .from('ad_listings_cache')
       .select('id, ad_url, title')
       .eq('is_active', true)
       .or('description.is.null,description.eq.')
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    if (sourceId) {
+      query = query.eq('source_id', sourceId);
+      console.log(`Backfill filtered by source_id: ${sourceId}`);
+    }
+
+    const { data: adsWithoutDesc, error } = await query;
 
     if (error) {
       console.error('Failed to fetch ads without descriptions:', error);
@@ -146,12 +155,14 @@ Deno.serve(async (req) => {
 
     const duration = Math.round((Date.now() - startTime) / 1000);
 
-    // Get remaining count for progress tracking
-    const { count: remainingCount } = await supabase
+    // Get remaining count for progress tracking (same filter as query)
+    let remainingQuery = supabase
       .from('ad_listings_cache')
       .select('id', { count: 'exact', head: true })
       .eq('is_active', true)
       .or('description.is.null,description.eq.');
+    if (sourceId) remainingQuery = remainingQuery.eq('source_id', sourceId);
+    const { count: remainingCount } = await remainingQuery;
 
     console.log(`Backfill complete in ${duration}s: ${totalSucceeded} succeeded, ${totalFailed} failed, ${remainingCount || 0} remaining`);
 

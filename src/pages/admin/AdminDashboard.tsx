@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { adminApi, ScrapingSource, StatsOverview } from '@/lib/adminApi';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, RefreshCw, Database, TrendingUp, Clock, CheckCircle, XCircle, Sparkles, Play } from 'lucide-react';
+import { Loader2, RefreshCw, Database, TrendingUp, Clock, CheckCircle, XCircle, Sparkles, Play, FileText } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,6 +24,8 @@ export default function AdminDashboard() {
     stillOther: number;
   } | null>(null);
   const [otherCount, setOtherCount] = useState<number>(0);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<{ processed: number; succeeded: number; failed: number; remaining: number; duration: number } | null>(null);
   const { toast } = useToast();
 
   const fetchOtherCount = async () => {
@@ -126,6 +128,41 @@ export default function AdminDashboard() {
       });
     } finally {
       setCategorizing(false);
+    }
+  };
+
+  const handleBackfillDescriptions = async () => {
+    setBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const result = await adminApi.runBackfillDescriptions({ limit: 50, batchSize: 10 });
+      if (result.success && result.processed !== undefined) {
+        setBackfillResult({
+          processed: result.processed,
+          succeeded: result.succeeded ?? 0,
+          failed: result.failed ?? 0,
+          remaining: result.remaining ?? 0,
+          duration: result.duration ?? 0,
+        });
+        toast({
+          title: 'Backfill klar',
+          description: `${result.succeeded ?? 0} beskrivningar hämtade, ${result.remaining ?? 0} kvar utan beskrivning.`,
+        });
+      } else {
+        toast({
+          title: 'Backfill misslyckades',
+          description: (result as { error?: string }).error ?? 'Okänt fel',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Backfill misslyckades',
+        description: error instanceof Error ? error.message : 'Ett fel uppstod',
+        variant: 'destructive',
+      });
+    } finally {
+      setBackfilling(false);
     }
   };
 
@@ -265,6 +302,50 @@ export default function AdminDashboard() {
                 <>
                   <Play className="w-4 h-4 mr-2" />
                   Kör AI-kategorisering på "Övrigt"
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Backfill descriptions */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-muted-foreground" />
+              <CardTitle>Backfill beskrivningar</CardTitle>
+            </div>
+            <CardDescription>
+              Hämtar beskrivningar för annonser som saknar det, från alla källor. Kör i batcher om 50 st. För en enskild källa: gå till Datakällor och använd Backfill-ikonen per rad.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {backfillResult && (
+              <div className="mb-4 p-3 bg-muted rounded-lg text-sm">
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <span>Bearbetade: {backfillResult.processed}</span>
+                  <span className="text-green-600">Lyckade: {backfillResult.succeeded}</span>
+                  <span className="text-destructive">Misslyckade: {backfillResult.failed}</span>
+                  <span>Kvar utan beskrivning: {backfillResult.remaining}</span>
+                  <span>Tid: {backfillResult.duration} s</span>
+                </div>
+              </div>
+            )}
+            <Button
+              onClick={handleBackfillDescriptions}
+              disabled={backfilling}
+              variant="outline"
+              className="w-full"
+            >
+              {backfilling ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Backfill pågår...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Kör backfill beskrivningar (50 st)
                 </>
               )}
             </Button>

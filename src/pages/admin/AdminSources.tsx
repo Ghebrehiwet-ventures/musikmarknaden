@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { adminApi, ScrapingSource } from '@/lib/adminApi';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Plus, Pencil, Trash2, RefreshCw, Eye, ExternalLink, ImageOff } from 'lucide-react';
+import { Loader2, Plus, Pencil, Trash2, RefreshCw, Eye, ExternalLink, ImageOff, FileText } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { sv } from 'date-fns/locale';
 
@@ -41,6 +41,7 @@ export default function AdminSources() {
   const [previewProducts, setPreviewProducts] = useState<PreviewProduct[]>([]);
   const [previewSourceName, setPreviewSourceName] = useState('');
   const [editingSource, setEditingSource] = useState<Partial<ScrapingSource> | null>(null);
+  const [backfilling, setBackfilling] = useState<string | null>(null);
   const { toast } = useToast();
 
   const fetchSources = async () => {
@@ -187,6 +188,33 @@ export default function AdminSources() {
       description: `${ok} källor synkade, ${failed} misslyckade.`,
     });
     fetchSources();
+  };
+
+  const handleBackfill = async (sourceId: string) => {
+    setBackfilling(sourceId);
+    try {
+      const result = await adminApi.runBackfillDescriptions({ limit: 50, source_id: sourceId });
+      if (result.success) {
+        toast({
+          title: 'Backfill klar',
+          description: `${result.succeeded ?? 0} beskrivningar hämtade. ${result.remaining ?? 0} annonser kvar utan beskrivning.`,
+        });
+      } else {
+        toast({
+          title: 'Backfill misslyckades',
+          description: (result as { error?: string }).error ?? 'Okänt fel',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Backfill misslyckades',
+        description: error instanceof Error ? error.message : 'Ett fel uppstod',
+        variant: 'destructive',
+      });
+    } finally {
+      setBackfilling(null);
+    }
   };
 
   const handlePreview = async (id: string) => {
@@ -420,6 +448,19 @@ export default function AdminSources() {
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
                               <RefreshCw className="w-4 h-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleBackfill(source.id)}
+                            disabled={backfilling === source.id || !source.is_active}
+                            title="Backfill beskrivningar för denna källa"
+                          >
+                            {backfilling === source.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <FileText className="w-4 h-4" />
                             )}
                           </Button>
                           <Button

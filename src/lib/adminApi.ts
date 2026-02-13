@@ -224,4 +224,47 @@ export const adminApi = {
     const result = await adminFetch<{ categories: SourceCategoryInfo[] }>('source-categories', undefined, { source_id });
     return result.categories;
   },
+
+  /** Backfill descriptions for ads that lack them. Optional source_id = only that source. */
+  async runBackfillDescriptions(options?: { limit?: number; batchSize?: number; source_id?: string }): Promise<{
+    success: boolean;
+    processed?: number;
+    succeeded?: number;
+    failed?: number;
+    remaining?: number;
+    duration?: number;
+    error?: string;
+  }> {
+    const session = await supabase.auth.getSession();
+    const token = session.data.session?.access_token;
+
+    if (!token) {
+      throw new Error('Not authenticated');
+    }
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/backfill-descriptions`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({
+          limit: options?.limit,
+          batchSize: options?.batchSize,
+          source_id: options?.source_id,
+        }),
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(data.error || `Request failed: ${response.status}`);
+    }
+
+    return data;
+  },
 };
