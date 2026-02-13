@@ -478,9 +478,16 @@ function parseAdsFromGearloopHtml(html: string): Ad[] {
     }
 
     // Extract location (Swedish city names in the context)
+    // Gearloop HTML structure: sale type (Säljes/Köpes/Bytes) followed by optional tags, then city name
     let location = '';
-    const locMatch = context.match(/(?:Säljes|Köpes|Bytes)([A-ZÅÄÖ][a-zåäö]+(?:\s[A-ZÅÄÖ]?[a-zåäö]+)*)/);
-    if (locMatch) location = locMatch[1].trim();
+    const locMatch = context.match(/(?:Säljes|Köpes|Bytes)\s*(?:<[^>]*>)*\s*([A-ZÅÄÖ][a-zåäöé]+(?:\s[A-ZÅÄÖ]?[a-zåäö]+)*)/);
+    if (locMatch) {
+      const loc = locMatch[1].trim();
+      // Validate: discard if it looks like a product word rather than a city
+      if (loc.length >= 2 && loc.length < 40) {
+        location = loc;
+      }
+    }
 
     // Extract category from category link
     let category = 'other';
@@ -491,12 +498,31 @@ function parseAdsFromGearloopHtml(html: string): Ad[] {
       category = GEARLOOP_CATEGORY_MAP[catSlug] || 'other';
     }
 
+    // Parse date from context (Gearloop shows dates like "21 jan", "5 feb")
+    let adDate = new Date().toISOString().split('T')[0];
+    const SWEDISH_MONTHS: Record<string, number> = {
+      'jan': 0, 'feb': 1, 'mar': 2, 'apr': 3, 'maj': 4, 'jun': 5,
+      'jul': 6, 'aug': 7, 'sep': 8, 'okt': 9, 'nov': 10, 'dec': 11,
+    };
+    const dateMatch = context.match(/(\d{1,2})\s+(jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)/i);
+    if (dateMatch) {
+      const day = parseInt(dateMatch[1], 10);
+      const month = SWEDISH_MONTHS[dateMatch[2].toLowerCase()];
+      if (month !== undefined) {
+        const year = new Date().getFullYear();
+        const parsed = new Date(year, month, day);
+        // If the parsed date is in the future, assume previous year
+        if (parsed > new Date()) parsed.setFullYear(year - 1);
+        adDate = parsed.toISOString().split('T')[0];
+      }
+    }
+
     ads.push({
       title: betterTitle,
       ad_url: fullUrl,
       category,
       location,
-      date: new Date().toISOString().split('T')[0],
+      date: adDate,
       price_text: priceText,
       price_amount: priceAmount,
       image_url: imageUrl,

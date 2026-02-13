@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import { Ad } from "@/lib/api";
+import { getCategoryLabel } from "@/lib/categories";
+import { formatPrice } from "@/lib/utils";
 import { MapPin, Loader2 } from "lucide-react";
 
 interface AdListProps {
@@ -50,27 +52,29 @@ export function AdList({ ads, isLoading, onAdHoverStart, onAdHoverEnd }: AdListP
               {ad.title}
             </h3>
             
-            <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-              <MapPin className="h-3 w-3" />
-              <span className="truncate">{ad.location}</span>
-              {ad.date && (
-                <>
-                  <span className="mx-1">·</span>
-                  <span>{ad.date}</span>
-                </>
-              )}
-            </div>
+            {(ad.location || ad.date) && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                {ad.location && (
+                  <>
+                    <MapPin className="h-3 w-3" />
+                    <span className="truncate">{ad.location}</span>
+                  </>
+                )}
+                {ad.location && ad.date && <span className="mx-1">·</span>}
+                {ad.date && <span>{ad.date}</span>}
+              </div>
+            )}
 
             {ad.category && (
               <span className="text-xs text-muted-foreground mt-auto">
-                {ad.category}
+                {getCategoryLabel(ad.category)}
               </span>
             )}
           </div>
 
           <div className="flex-shrink-0">
             <p className="font-bold text-primary whitespace-nowrap">
-              {ad.price_text || (ad.price_amount ? `${ad.price_amount} kr` : "Pris ej angivet")}
+              {formatPrice(ad.price_text, ad.price_amount)}
             </p>
           </div>
         </Link>

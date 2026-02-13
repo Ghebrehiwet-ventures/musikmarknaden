@@ -8,9 +8,10 @@ interface HeaderProps {
   onCategorySelect?: (categoryId: string | null) => void;
   searchQuery?: string;
   onSearch?: (query: string) => void;
+  totalAds?: number;
 }
 
-export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderProps) {
+export function Header({ onCategorySelect, searchQuery = "", onSearch, totalAds }: HeaderProps) {
   const handleSearch = (query: string) => {
     onSearch?.(query);
   };
@@ -38,6 +39,7 @@ export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderP
             onSearch={handleSearch}
             className="w-full max-w-md"
             compact
+            totalAds={totalAds}
           />
         </div>
 
@@ -55,6 +57,7 @@ export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderP
           searchQuery={searchQuery} 
           onSearch={handleSearch}
           className="w-full"
+          totalAds={totalAds}
         />
       </div>
     </header>

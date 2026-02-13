@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Ad } from "@/lib/api";
+import { formatPrice } from "@/lib/utils";
 
 interface AdCardProps {
   ad: Ad;
@@ -29,7 +30,7 @@ export function AdCard({ ad, onHoverStart, onHoverEnd }: AdCardProps) {
       
       <div className="p-2">
         <p className="font-bold text-foreground">
-          {ad.price_text || (ad.price_amount ? `${ad.price_amount} kr` : "Pris ej angivet")}
+          {formatPrice(ad.price_text, ad.price_amount)}
         </p>
         
         <p className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
@@ -37,7 +38,7 @@ export function AdCard({ ad, onHoverStart, onHoverEnd }: AdCardProps) {
         </p>
         
         <p className="text-xs text-muted-foreground mt-1">
-          {ad.location}{ad.date && ` · ${ad.date}`}
+          {ad.location || ''}{ad.location && ad.date ? ' · ' : ''}{ad.date || ''}
         </p>
       </div>
     </Link>

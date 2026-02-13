@@ -14,6 +14,7 @@ interface ScrapedProduct {
   image_url: string;
   category: string;
   source_category?: string;
+  date?: string; // Parsed from source (e.g. "2026-02-10"), defaults to scrape date if absent
 }
 
 interface ScrapeQualityConfig {
@@ -396,25 +397,44 @@ function decodeHtmlEntities(text: string): string {
 
 const SHORT_KEYWORDS = new Set(['amp', 'bas', 'cab', 'dj', 'pa', 'eq', 'sub']);
 
+// Compound overrides: multi-word patterns checked FIRST to avoid misclassification.
+// e.g. "Fender Stratocaster tremolo" should → guitars-bass, not pedals-effects.
+const COMPOUND_OVERRIDES: [RegExp, string][] = [
+  // Specific guitar/bass brands & models always → guitars-bass
+  [/\b(fender|gibson|ibanez|epiphone|squier|prs|gretsch|schecter|rickenbacker|hagstr[öo]m)\b/i, 'guitars-bass'],
+  [/\b(stratocaster|telecaster|les\s*paul|jazzmaster|jaguar|mustang|duo.sonic|stingray|precision\s*bass|jazz\s*bass)\b/i, 'guitars-bass'],
+  // Drum-specific compound phrases (before "pedal" matches pedals-effects)
+  [/\b(trumset|drum\s*set|drum\s*kit|virveltrumma|snare\s*drum)\b/i, 'drums-percussion'],
+  [/\b(bass\s*drum|bastrumma|kick\s*pedal|drum\s*pedal|hi.hat\s*stand|trummaskin)\b/i, 'drums-percussion'],
+  [/\b(dtx|dtxplorer|dtxpress|td-\d|roland\s*td)\b/i, 'drums-percussion'],
+  // Wind/brass compound overrides (before "keyboard" etc.)
+  [/\b(flygelhorn|valthorn|euphonium|baryton(sax)?|sopransax|altsax|tenorsax)\b/i, 'wind-brass'],
+];
+
 function categorizeByKeywords(title: string): string {
   const decoded = decodeHtmlEntities(title);
   const titleLower = decoded.toLowerCase();
   
-  // PHASE 2 FIX: Priority order from most specific to least specific
-  // Synths/pedals/studio checked FIRST (specific brands), instruments LAST (generic)
+  // Step 1: Check compound overrides first (most specific multi-word patterns)
+  for (const [pattern, category] of COMPOUND_OVERRIDES) {
+    if (pattern.test(titleLower)) return category;
+  }
   
+  // Step 2: Keyword matching with reordered priority.
+  // Instruments first (guitars, drums, keys, wind) so that generic words like
+  // "pedal", "tremolo", "roland" in those contexts are correctly categorized.
   const categoryPriority = [
-    'synth-modular',      // 1. Synths first (Moog, Korg override generic "keyboard")
-    'pedals-effects',     // 2. Pedals & multi-effects
-    'studio',             // 3. Mics, interfaces, monitors
-    'amplifiers',         // 4. Amps & cabs
-    'dj-live',            // 5. DJ gear & PA systems
-    'guitars-bass',       // 6. Guitars & bass (NEW - specific instrument type)
-    'drums-percussion',   // 7. Drums & percussion (NEW - specific instrument type)
-    'keys-pianos',        // 8. Keyboards & pianos (NEW - not synths, real pianos)
-    'wind-brass',         // 9. Wind & brass instruments (NEW - specific)
-    'strings-other',      // 10. Strings & other acoustic (NEW - specific)
-    'accessories-parts',  // 11. Accessories last (catch-all for cables, cases, etc)
+    'guitars-bass',       // 1. Guitars & bass — check before pedals (tremolo, fender)
+    'drums-percussion',   // 2. Drums & percussion — check before pedals (kick pedal, pearl)
+    'wind-brass',         // 3. Wind & brass
+    'keys-pianos',        // 4. Keyboards & pianos (real pianos, not synths)
+    'strings-other',      // 5. Strings & other acoustic
+    'synth-modular',      // 6. Synths (Moog, Korg, etc.)
+    'pedals-effects',     // 7. Pedals & effects (now after instruments)
+    'studio',             // 8. Mics, interfaces, monitors
+    'amplifiers',         // 9. Amps & cabs
+    'dj-live',            // 10. DJ gear & PA systems
+    'accessories-parts',  // 11. Accessories last (catch-all)
   ];
   
   for (const category of categoryPriority) {
@@ -512,10 +532,26 @@ function parseBlocketMarkdown(markdown: string, baseUrl: string): ScrapedProduct
     // Parse price - can be "1 150 kr", "Bortskänkes", "Säljes", etc.
     const { text, amount } = parsePrice(priceText);
     
-    // Extract location (remove time suffix like "9 min", "3 tim", "2 dagar")
+    // Extract location (remove time suffix like "9 min", "3 tim", "2 dagar sedan")
     const location = locationTime
-      .replace(/\d+\s*(min|tim|dagar?|sekunder?|månad(er)?|veckor?)\s*$/i, '')
+      .replace(/\s*\d+\s*(min|tim(mar?)?|dagar?|sekunder?|månad(er)?|veckor?|[dhms])(\s*sedan)?\s*$/i, '')
+      .replace(/[·•\-]\s*$/, '')
       .trim();
+
+    // Parse relative time to actual date (e.g. "3 dagar" → 3 days ago)
+    let adDate = new Date().toISOString().split('T')[0]; // default: today
+    const timeMatch = locationTime.match(/(\d+)\s*(min|tim(mar?)?|dagar?|sekunder?|månad(er)?|veckor?)/i);
+    if (timeMatch) {
+      const num = parseInt(timeMatch[1], 10);
+      const unit = timeMatch[2].toLowerCase();
+      const now = Date.now();
+      if (unit.startsWith('min')) adDate = new Date(now - num * 60 * 1000).toISOString().split('T')[0];
+      else if (unit.startsWith('tim')) adDate = new Date(now - num * 3600 * 1000).toISOString().split('T')[0];
+      else if (unit.startsWith('dag')) adDate = new Date(now - num * 86400 * 1000).toISOString().split('T')[0];
+      else if (unit.startsWith('sek')) adDate = new Date(now).toISOString().split('T')[0];
+      else if (unit.startsWith('vec')) adDate = new Date(now - num * 7 * 86400 * 1000).toISOString().split('T')[0];
+      else if (unit.startsWith('mån')) adDate = new Date(now - num * 30 * 86400 * 1000).toISOString().split('T')[0];
+    }
     
     if (title && adUrl) {
       products.push({
@@ -526,6 +562,7 @@ function parseBlocketMarkdown(markdown: string, baseUrl: string): ScrapedProduct
         location,
         image_url: imageUrl,
         category: categorizeByKeywords(title),
+        date: adDate,
       });
     }
   }
@@ -749,6 +786,7 @@ function parseWooCommerce(html: string, baseUrl: string, siteName: string): Scra
 // Parse Gear4Music HTML
 function parseGear4Music(html: string, baseUrl: string): ScrapedProduct[] {
   const products: ScrapedProduct[] = [];
+  const seenTitles = new Set<string>();
   
   // Gear4Music uses <a class="g4m-grid-item product-card"> with data-g4m-inv attribute
   // Structure: <a href="URL" class="g4m-grid-item product-card">
@@ -789,9 +827,16 @@ function parseGear4Music(html: string, baseUrl: string): ScrapedProduct[] {
       }
     }
     
-    const title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
+    let title = titleMatch ? decodeHtmlEntities(titleMatch[1].trim()) : '';
+    // Strip "– Secondhand" / "- Secondhand" suffix from Gear4Music titles
+    title = title.replace(/\s*[–\-]\s*Secondhand\s*$/i, '').trim();
     
     if (title && adUrl) {
+      // Deduplicate by normalized title (Gear4Music lists same product in different conditions)
+      const normalizedTitle = title.toLowerCase().replace(/\s+/g, ' ');
+      if (seenTitles.has(normalizedTitle)) continue;
+      seenTitles.add(normalizedTitle);
+
       const priceText = priceMatch ? priceMatch[1].trim() + ' kr' : null;
       const priceAmount = priceMatch ? parseInt(priceMatch[1].replace(/\s/g, ''), 10) : null;
       
@@ -800,14 +845,14 @@ function parseGear4Music(html: string, baseUrl: string): ScrapedProduct[] {
         ad_url: adUrl.startsWith('http') ? adUrl : baseUrl.replace(/\/$/, '') + adUrl,
         price_text: priceText,
         price_amount: priceAmount,
-        location: 'Gear4Music',
+        location: '',
         image_url: imageUrl,
         category: categorizeByKeywords(title),
       });
     }
   }
   
-  console.log(`Gear4Music parser found ${products.length} products`);
+  console.log(`Gear4Music parser found ${products.length} products (after dedup)`);
   return products;
 }
 
@@ -1694,7 +1739,7 @@ REGLER:
       image_url: product.image_url,
       category: product.category,
       source_category: product.source_category || null,
-      date: now.split('T')[0],
+      date: product.date || now.split('T')[0],
       is_active: true,
       last_seen_at: now,
       source_id: sourceId,

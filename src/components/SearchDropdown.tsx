@@ -11,6 +11,7 @@ interface SearchDropdownProps {
   onSubmit?: (query: string) => void;
   className?: string;
   compact?: boolean;
+  totalAds?: number;
 }
 
 export function SearchDropdown({ 
@@ -19,6 +20,7 @@ export function SearchDropdown({
   onSubmit, 
   className, 
   compact,
+  totalAds,
 }: SearchDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -79,7 +81,7 @@ export function SearchDropdown({
         <Input
           ref={inputRef}
           type="text"
-          placeholder="Sök bland 1900+ annonser..."
+          placeholder={totalAds ? `Sök bland ${Math.floor(totalAds / 100) * 100}+ annonser...` : "Sök bland annonser..."}
           value={searchQuery}
           onChange={handleInputChange}
           onFocus={() => setIsOpen(true)}

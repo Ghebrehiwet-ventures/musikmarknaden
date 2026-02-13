@@ -10,7 +10,7 @@ import { Footer } from "@/components/Footer";
 import { ImageLightbox, ZoomHint } from "@/components/ImageLightbox";
 import { getAdDetails, fetchAdListings, Ad } from "@/lib/api";
 import { CATEGORIES, mapToInternalCategory } from "@/lib/categories";
-import { cn } from "@/lib/utils";
+import { cn, formatPrice } from "@/lib/utils";
 import { SEOHead } from "@/components/SEOHead";
 import { generateAdMetaTags, generateProductSchema } from "@/lib/seo";
 
@@ -314,7 +314,7 @@ function SimilarAdsCarousel({ ads, currentAdUrl }: { ads: Ad[]; currentAdUrl: st
               {ad.title}
             </h3>
             <p className="text-primary font-bold text-sm mt-1">
-              {ad.price_text || "Pris ej angivet"}
+              {formatPrice(ad.price_text, ad.price_amount)}
             </p>
             {ad.location && (
               <p className="text-muted-foreground text-xs mt-0.5 flex items-center gap-1">
@@ -438,11 +438,10 @@ export default function AdDetails() {
   const title = ad?.title ?? details?.title ?? "Annons";
   // Prefer listing price (ad.price_text) as it's synced more frequently
   // Fall back to details price only if listing price is missing
-  const priceText = ad?.price_text 
-    ? ad.price_text 
-    : details?.price_text 
-      ? details.price_text 
-      : "Pris ej angivet";
+  const priceText = formatPrice(
+    ad?.price_text || details?.price_text,
+    ad?.price_amount || details?.price_amount
+  );
   const location = ad?.location ?? details?.location ?? "";
   
   // Show cached description immediately if available, otherwise wait for details

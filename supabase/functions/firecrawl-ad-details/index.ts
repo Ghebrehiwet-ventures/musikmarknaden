@@ -166,7 +166,7 @@ Deno.serve(async (req: Request) => {
     if (!html) {
       // Some sources load images dynamically with JS - need to wait for rendering
       const needsWait = sourceType === 'blocket' || sourceType === 'jam';
-      const waitTime = sourceType === 'blocket' ? 6000 : sourceType === 'jam' ? 3000 : 0;
+      const waitTime = sourceType === 'blocket' ? 10000 : sourceType === 'jam' ? 3000 : 0;
       const formats = sourceType === 'blocket'
         ? ['markdown', 'html', 'rawHtml']
         : ['markdown', 'html'];

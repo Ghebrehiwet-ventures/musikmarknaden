@@ -160,6 +160,7 @@ export default function Index() {
           onCategorySelect={handleCategoryChange} 
           searchQuery={searchQuery}
           onSearch={handleSearch}
+          totalAds={allAds.length}
         />
       </div>
       
