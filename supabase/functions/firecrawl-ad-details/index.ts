@@ -124,7 +124,7 @@ Deno.serve(async (req: Request) => {
 
     // For server-rendered sites (WooCommerce), try direct HTTP fetch first — much faster
     // and avoids Firecrawl timeouts on slow servers like Slagverket
-    const useDirectFetch = sourceType === 'woocommerce' || sourceType === 'gearloop';
+    const useDirectFetch = sourceType === 'woocommerce' || sourceType === 'gearloop' || sourceType === 'dlxmusic';
 
     if (useDirectFetch) {
       console.log('Trying direct HTTP fetch (server-rendered site)...');
@@ -350,6 +350,8 @@ function parseAdDetails(
     description = extractMusikborsenDescription(markdown);
   } else if (sourceType === 'gear4music') {
     description = extractGear4MusicDescription(html);
+  } else if (sourceType === 'dlxmusic') {
+    description = extractDlxDescription(markdown, html);
   } else {
     description = extractGearloopDescription(markdown);
   }
@@ -674,6 +676,148 @@ function extractGear4MusicDescription(html: string): string {
   
   console.log('Gear4Music: Extracted description, length:', description.length);
   return description;
+}
+
+// DLX Music-specific description extraction
+function extractDlxDescription(markdown: string, html: string): string {
+  console.log('DLX: Extracting description');
+
+  // Strategy 1: Extract from HTML - look for product description sections
+  if (html) {
+    // DLX often has a product-description or description-text div
+    const descPatterns = [
+      // Product description section (tab content)
+      /<div[^>]*(?:id|class)="[^"]*(?:product-?description|description-?text|tab-?description|tab-?content)[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+      // Description within article body
+      /<article[^>]*>([\s\S]*?)<\/article>/i,
+      // Meta description as fallback
+    ];
+
+    for (const pattern of descPatterns) {
+      const match = html.match(pattern);
+      if (match && match[1]) {
+        let desc = match[1]
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<br\s*\/?>/gi, '\n')
+          .replace(/<\/p>/gi, '\n')
+          .replace(/<\/li>/gi, '\n')
+          .replace(/<li[^>]*>/gi, '• ')
+          .replace(/<[^>]+>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        
+        if (desc.length > 30) {
+          console.log('DLX: Found description from HTML, length:', desc.length);
+          return desc;
+        }
+      }
+    }
+
+    // Try og:description from HTML
+    const ogDesc = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
+    if (ogDesc && ogDesc[1].length > 30) {
+      console.log('DLX: Using og:description');
+      return ogDesc[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').trim();
+    }
+  }
+
+  // Strategy 2: Parse from markdown with aggressive DLX-specific cleaning
+  const lines = markdown.split('\n');
+  const contentLines: string[] = [];
+  let foundDescription = false;
+  let skipNavigation = true;
+
+  // DLX-specific patterns to always skip (navigation, UI, store info)
+  const skipPatterns = [
+    /^!\[/,                                    // Images
+    /^\[.*\]\(.*dlxmusic/i,                    // DLX links
+    /^Info$/i,
+    /^Butiken$/i,
+    /^Varumärken$/i,
+    /^Nyheter$/i,
+    /^Kampanjer$/i,
+    /^Skola$/i,
+    /^OKassa$/i,
+    /Din varukorg/i,
+    /Betala direkt/i,
+    /Spara kort/i,
+    /^Finns i butik/i,
+    /^1-3 dagar$/i,
+    /^Köp$/i,
+    /kr\/st$/,
+    /^\d+\s*kr\/st$/,
+    /^Visa mer$/i,
+    /^V\s+Visa mer$/i,
+    /Artikelnummer/i,
+    /^[A-Z]\s+Artikelnummer/i,
+    /^[A-ZÅÄÖ]\s+[A-Z]/,                      // Single letter prefix lines (DLX nav abbreviations)
+    /^\|/,                                     // Table rows
+    /^---/,
+    /ALTERNATIVES%7C/i,                        // URL-encoded filter params
+    /aw_source=pb/i,
+    /^Relaterade/i,
+    /^Senast visade/i,
+  ];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Look for the "Beskrivning" heading as start marker
+    if (/^B\s+Beskrivning$/i.test(trimmed) || /^Beskrivning$/i.test(trimmed)) {
+      foundDescription = true;
+      skipNavigation = false;
+      continue;
+    }
+
+    // If we haven't found the description section yet, check for product short description
+    // (DLX sometimes has "D Demo från Sweden Rock..." format)
+    if (skipNavigation && /^D\s+/.test(trimmed) && trimmed.length > 20) {
+      const desc = trimmed.replace(/^D\s+/, '');
+      if (desc.length > 15 && !skipPatterns.some(p => p.test(desc))) {
+        contentLines.push(desc);
+        continue;
+      }
+    }
+
+    if (skipNavigation && !foundDescription) continue;
+
+    const shouldSkip = skipPatterns.some(p => p.test(trimmed));
+    if (shouldSkip) continue;
+
+    // Stop collecting when we hit related products or other sections
+    if (/^(Y|P|M|G|T)\s+\w/.test(trimmed) && trimmed.includes('(https://')) break;
+    if (/Artikelnummer \d+/i.test(trimmed)) break;
+
+    // Clean single-letter prefixes that DLX adds (e.g. "P Pedalen har en...")
+    let cleaned = trimmed;
+    if (/^[A-ZÅÄÖ]\s+[A-ZÅÄÖ]/.test(cleaned) && cleaned.length > 10) {
+      cleaned = cleaned.substring(2);
+    }
+
+    // Skip very short lines that are likely UI elements
+    if (cleaned.length < 5) continue;
+    // Skip lines that are just numbers or prices
+    if (/^\d[\d\s]*$/.test(cleaned)) continue;
+    if (/^\d[\d\s]*kr/i.test(cleaned)) continue;
+
+    contentLines.push(cleaned);
+  }
+
+  const desc = contentLines.join('\n').trim();
+
+  if (!desc || desc.length < 15) {
+    console.log('DLX: No description extracted');
+    return 'Ingen beskrivning tillgänglig';
+  }
+
+  console.log('DLX: Extracted description from markdown, length:', desc.length);
+  return desc;
 }
 
 function extractGearloopDescription(markdown: string): string {

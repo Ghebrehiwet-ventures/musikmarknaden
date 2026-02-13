@@ -264,23 +264,23 @@ function SimilarAdsCarousel({ ads, currentAdUrl }: { ads: Ad[]; currentAdUrl: st
 
   return (
     <div className="relative">
-      {/* Navigation Buttons – primärfärg så de alltid syns oavsett bakgrund */}
+      {/* Navigation Buttons */}
       {canScrollLeft && (
         <button
           onClick={() => scroll('left')}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-20 h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-xl ring-2 ring-primary/50 flex items-center justify-center hover:opacity-90 transition-opacity -ml-2 lg:-ml-6"
+          className="absolute left-2 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full bg-foreground text-background shadow-lg flex items-center justify-center hover:bg-foreground/80 transition-colors"
           aria-label="Scrolla vänster"
         >
-          <ChevronLeft className="h-6 w-6" strokeWidth={2.5} />
+          <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
         </button>
       )}
       {canScrollRight && (
         <button
           onClick={() => scroll('right')}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-20 h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-xl ring-2 ring-primary/50 flex items-center justify-center hover:opacity-90 transition-opacity -mr-2 lg:-mr-6"
+          className="absolute right-2 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full bg-foreground text-background shadow-lg flex items-center justify-center hover:bg-foreground/80 transition-colors"
           aria-label="Scrolla höger"
         >
-          <ChevronRight className="h-6 w-6" strokeWidth={2.5} />
+          <ChevronRight className="h-5 w-5" strokeWidth={2.5} />
         </button>
       )}
 
@@ -883,7 +883,7 @@ export default function AdDetails() {
 
         {/* Similar Ads Section */}
         {similarAds.length > 0 && (
-          <section className="mt-8 lg:mt-12 px-4 lg:px-0 overflow-hidden">
+          <section className="mt-8 lg:mt-12 px-4 lg:px-0">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg lg:text-xl font-semibold">Du kanske också gillar</h2>
               {categoryInfo && (
