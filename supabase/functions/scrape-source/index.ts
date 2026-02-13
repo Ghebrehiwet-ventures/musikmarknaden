@@ -691,10 +691,13 @@ function parseWooCommerce(html: string, baseUrl: string, siteName: string): Scra
                        productHtml.match(/(\d[\d\s,.]*)\s*(?:kr|SEK|:-)/i);
     
     // Find all images and pick the first non-placeholder one
-    const imgMatches = productHtml.matchAll(/(?:data-src|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi);
+    // WooCommerce sites use various lazy-loading attributes: src, data-src, data-lazy-src, data-original, srcset
+    const imgMatches = productHtml.matchAll(/(?:data-lazy-src|data-original|data-src|srcset|src)="([^"]+\.(?:jpg|jpeg|png|webp)[^"]*)"/gi);
     let imageUrl = '';
     for (const imgMatch of imgMatches) {
-      const url = imgMatch[1];
+      let url = imgMatch[1];
+      // srcset may have multiple URLs – take the first one
+      if (url.includes(',')) url = url.split(',')[0].trim().split(/\s/)[0];
       if (!isWooCommercePlaceholderImage(url)) {
         // Prefer wp-content/uploads images (actual product photos)
         if (url.includes('wp-content/uploads')) {
@@ -705,6 +708,14 @@ function parseWooCommerce(html: string, baseUrl: string, siteName: string): Scra
         if (!imageUrl) {
           imageUrl = url;
         }
+      }
+    }
+
+    // Fallback: look for background-image in style attributes (some WooCommerce themes)
+    if (!imageUrl) {
+      const bgMatch = productHtml.match(/background-image:\s*url\(['"]?([^'")\s]+\.(?:jpg|jpeg|png|webp)[^'")\s]*)['"]?\)/i);
+      if (bgMatch && !isWooCommercePlaceholderImage(bgMatch[1])) {
+        imageUrl = bgMatch[1];
       }
     }
     
@@ -1042,28 +1053,63 @@ async function scrapeSinglePage(
   sourceName: string,
   domain: string
 ): Promise<{ products: ScrapedProduct[]; html: string; markdown: string }> {
-  const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${firecrawlApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      url: pageUrl,
-      formats: ['html', 'markdown'],
-      waitFor: 3000,
-    }),
-  });
+  let html = '';
+  let markdown = '';
 
-  if (!scrapeResponse.ok) {
-    const error = await scrapeResponse.text();
-    console.error(`Scrape failed for ${sourceName}:`, error);
-    throw new Error(`Scrape failed: ${error}`);
+  // For server-rendered sites (WooCommerce), try direct HTTP fetch first — avoids Firecrawl
+  // timeouts on slow servers like Slagverket
+  const isServerRendered = domain.includes('slagverket') || domain.includes('uppsalamusikverkstad');
+
+  if (isServerRendered) {
+    console.log(`Direct fetch for ${sourceName}: ${pageUrl}`);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout
+      const directResponse = await fetch(pageUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; Musikmarknaden/1.0; +https://musikmarknaden.com)',
+          'Accept': 'text/html,application/xhtml+xml',
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (directResponse.ok) {
+        html = await directResponse.text();
+        console.log(`Direct fetch successful for ${sourceName} (${html.length} bytes)`);
+      } else {
+        console.warn(`Direct fetch failed for ${sourceName}: HTTP ${directResponse.status}`);
+      }
+    } catch (directError) {
+      console.warn(`Direct fetch failed for ${sourceName}, falling back to Firecrawl:`, directError);
+    }
   }
 
-  const scrapeData = await scrapeResponse.json();
-  const html = scrapeData.data?.html || scrapeData.html || '';
-  const markdown = scrapeData.data?.markdown || scrapeData.markdown || '';
+  // Firecrawl fallback (or primary for JS-rendered sites)
+  if (!html) {
+    const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${firecrawlApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url: pageUrl,
+        formats: ['html', 'markdown'],
+        waitFor: 3000,
+      }),
+    });
+
+    if (!scrapeResponse.ok) {
+      const error = await scrapeResponse.text();
+      console.error(`Scrape failed for ${sourceName}:`, error);
+      throw new Error(`Scrape failed: ${error}`);
+    }
+
+    const scrapeData = await scrapeResponse.json();
+    html = scrapeData.data?.html || scrapeData.html || '';
+    markdown = scrapeData.data?.markdown || scrapeData.markdown || '';
+  }
   
   let products: ScrapedProduct[] = [];
   

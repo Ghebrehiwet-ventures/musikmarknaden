@@ -115,49 +115,95 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.log(`× Cache miss - scraping from Firecrawl [${sourceType}]:`, ad_url);
+    console.log(`× Cache miss - scraping [${sourceType}]:`, ad_url);
     const scrapeStart = Date.now();
 
-    // Some sources load images dynamically with JS - need to wait for rendering
-    const needsWait = sourceType === 'blocket' || sourceType === 'jam';
-    const waitTime = sourceType === 'blocket' ? 6000 : sourceType === 'jam' ? 3000 : 0;
-    const formats = sourceType === 'blocket'
-      ? ['markdown', 'html', 'rawHtml']
-      : ['markdown', 'html'];
-    
-    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        url: ad_url,
-        formats,
-        // Jam pages become extremely noisy (cookie banner + category lists). Prefer main content.
-        onlyMainContent: sourceType === 'jam',
-        ...(needsWait && { waitFor: waitTime }),
-      }),
-    });
+    let markdown = '';
+    let html = '';
+    let metadata: Record<string, unknown> = {};
 
-    const data = await response.json();
+    // For server-rendered sites (WooCommerce), try direct HTTP fetch first — much faster
+    // and avoids Firecrawl timeouts on slow servers like Slagverket
+    const useDirectFetch = sourceType === 'woocommerce' || sourceType === 'gearloop';
 
-    if (!response.ok) {
-      console.error('Firecrawl API error:', data);
-      return new Response(
-        JSON.stringify({ error: data.error || `Request failed with status ${response.status}` }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (useDirectFetch) {
+      console.log('Trying direct HTTP fetch (server-rendered site)...');
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout
+        const directResponse = await fetch(ad_url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Musikmarknaden/1.0; +https://musikmarknaden.com)',
+            'Accept': 'text/html,application/xhtml+xml',
+          },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (directResponse.ok) {
+          html = await directResponse.text();
+          // Extract metadata from HTML
+          const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
+          const ogImageMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i);
+          const ogDescMatch = html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
+          metadata = {
+            title: titleMatch ? titleMatch[1].replace(/&amp;/g, '&').replace(/&#039;/g, "'").trim() : '',
+            ogImage: ogImageMatch ? ogImageMatch[1] : '',
+            description: ogDescMatch ? ogDescMatch[1] : '',
+          };
+          console.log(`Direct fetch successful in ${Date.now() - scrapeStart}ms (${html.length} bytes)`);
+        } else {
+          console.warn(`Direct fetch failed: HTTP ${directResponse.status}`);
+          html = ''; // Fall through to Firecrawl
+        }
+      } catch (directError) {
+        console.warn('Direct fetch failed (timeout/error), falling back to Firecrawl:', directError);
+        html = '';
+      }
+    }
+
+    // Firecrawl fallback (or primary for JS-rendered sites like Blocket)
+    if (!html) {
+      // Some sources load images dynamically with JS - need to wait for rendering
+      const needsWait = sourceType === 'blocket' || sourceType === 'jam';
+      const waitTime = sourceType === 'blocket' ? 6000 : sourceType === 'jam' ? 3000 : 0;
+      const formats = sourceType === 'blocket'
+        ? ['markdown', 'html', 'rawHtml']
+        : ['markdown', 'html'];
+      
+      const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: ad_url,
+          formats,
+          onlyMainContent: sourceType === 'jam',
+          ...(needsWait && { waitFor: waitTime }),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Firecrawl API error:', data);
+        return new Response(
+          JSON.stringify({ error: data.error || `Request failed with status ${response.status}` }),
+          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      markdown = data.data?.markdown || data.markdown || '';
+      const processedHtml = data.data?.html || data.html || '';
+      const rawHtml = data.data?.rawHtml || data.rawHtml || '';
+      html = sourceType === 'blocket' && rawHtml ? rawHtml : processedHtml;
+      metadata = data.data?.metadata || data.metadata || {};
     }
 
     const scrapeTime = Date.now() - scrapeStart;
     console.log(`Scrape successful in ${scrapeTime}ms, parsing ad details for source: ${sourceType}`);
-
-    const markdown = data.data?.markdown || data.markdown || '';
-    const processedHtml = data.data?.html || data.html || '';
-    const rawHtml = data.data?.rawHtml || data.rawHtml || '';
-    const html = sourceType === 'blocket' && rawHtml ? rawHtml : processedHtml;
-    const metadata = data.data?.metadata || data.metadata || {};
 
     const adDetails = parseAdDetails(markdown, html, metadata, sourceType);
 
