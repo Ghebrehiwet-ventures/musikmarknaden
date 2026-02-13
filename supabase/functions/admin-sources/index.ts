@@ -205,8 +205,9 @@ Deno.serve(async (req) => {
             syncResult = scrapeData;
           } else if (isGearloop) {
             // Gearloop: use sync-ads (all categories + pagination), not scrape-source (single URL)
+            // skip_log: true because admin-sources already manages the sync log
             const { data: syncData, error: syncError } = await adminClient.functions.invoke('sync-ads', {
-              body: { source_id: sourceId }
+              body: { source_id: sourceId, skip_log: true }
             });
 
             if (syncError) throw syncError;

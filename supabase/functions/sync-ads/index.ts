@@ -359,6 +359,8 @@ function parseGearloopAds(html: string, markdown: string): Ad[] {
     const locMatch = locRegex.exec(markdown);
     if (locMatch) location = locMatch[1].trim();
 
+    const priceNum = priceText ? parseInt(priceText.replace(/\s/g, '').replace('kr', ''), 10) || null : null;
+
     ads.push({
       title,
       ad_url: adUrl,
@@ -366,6 +368,7 @@ function parseGearloopAds(html: string, markdown: string): Ad[] {
       location,
       date: dateStr || new Date().toISOString().split('T')[0],
       price_text: priceText,
+      price_amount: priceNum,
       image_url: imageUrl,
       source_category: '',
     });
@@ -384,7 +387,7 @@ function parseGearloopAds(html: string, markdown: string): Ad[] {
     let category = resolveGearloopCategoryFromMarkdown(markdown, adUrl);
     if (category === 'other') category = resolveGearloopCategory(html, adUrl);
 
-    ads.push({ title, ad_url: adUrl, category, location: '', date: new Date().toISOString().split('T')[0], price_text: null, image_url: imageUrl, source_category: '' });
+    ads.push({ title, ad_url: adUrl, category, location: '', date: new Date().toISOString().split('T')[0], price_text: null, price_amount: null, image_url: imageUrl, source_category: '' });
   }
 
   // Fallback: all ad URLs from HTML
@@ -398,7 +401,7 @@ function parseGearloopAds(html: string, markdown: string): Ad[] {
     const imageUrl = imageMap.get(normalized) || '';
     const category = resolveGearloopCategory(html, normalized);
 
-    ads.push({ title, ad_url: normalized, category, location: '', date: new Date().toISOString().split('T')[0], price_text: null, image_url: imageUrl, source_category: '' });
+    ads.push({ title, ad_url: normalized, category, location: '', date: new Date().toISOString().split('T')[0], price_text: null, price_amount: null, image_url: imageUrl, source_category: '' });
   }
 
   const withImages = ads.filter((a) => a.image_url).length;
@@ -406,48 +409,143 @@ function parseGearloopAds(html: string, markdown: string): Ad[] {
   return ads;
 }
 
-const MAX_GEARLOOP_PAGES = 80; // ~25 ads/page × 80 = ~2000 ads max
+const MAX_GEARLOOP_PAGES = 60; // ~25 ads/page
 
-// Fetch a single page from Gearloop main listing
-async function fetchGearloopPage(firecrawlApiKey: string, page: number): Promise<Ad[]> {
+/**
+ * Parse ads directly from Gearloop HTML (no Firecrawl needed — server-rendered site).
+ * Each ad card has the pattern: <a href="/ID-slug">...<img src="..."/>...title...price...</a>
+ */
+function parseAdsFromGearloopHtml(html: string): Ad[] {
+  const ads: Ad[] = [];
+  const seenUrls = new Set<string>();
+
+  // Match ad card patterns: link + image + title + price + location + category
+  // Gearloop card structure: <a href="/ID-slug" class="ad-card">... 
+  //   <img src="..."/> ... <h4>Title</h4> ... price ... location ... <a href="/kategori-alla">Category</a>
+  
+  // Strategy 1: Find all ad links with numeric IDs
+  const adLinkRegex = /href="(\/(\d{5,})-([^"]+))"/g;
+  const adUrls: { path: string; id: string; slug: string }[] = [];
+  let m;
+  while ((m = adLinkRegex.exec(html)) !== null) {
+    const path = m[1];
+    const id = m[2];
+    const slug = m[3];
+    const fullUrl = `https://gearloop.se${path}`;
+    if (!seenUrls.has(fullUrl)) {
+      seenUrls.add(fullUrl);
+      adUrls.push({ path, id, slug });
+    }
+  }
+
+  // For each ad URL, extract contextual info from surrounding HTML
+  for (const { path, id, slug } of adUrls) {
+    const fullUrl = `https://gearloop.se${path}`;
+    const title = slug.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+
+    // Find the card context (~2000 chars around the link)
+    const linkIdx = html.indexOf(`href="${path}"`);
+    if (linkIdx === -1) continue;
+    const contextStart = Math.max(0, linkIdx - 500);
+    const contextEnd = Math.min(html.length, linkIdx + 2000);
+    const context = html.substring(contextStart, contextEnd);
+
+    // Extract image
+    let imageUrl = '';
+    // Look for img src near this ad link
+    const imgMatch = context.match(new RegExp(`(?:src|data-src)="([^"]*(?:assets\\.gearloop\\.se|/uploads/)[^"]*)"`, 'i'));
+    if (imgMatch) {
+      imageUrl = imgMatch[1];
+      if (imageUrl.startsWith('/')) imageUrl = 'https://gearloop.se' + imageUrl;
+    }
+
+    // Extract title from h4 or heading near the link
+    const h4Match = context.match(new RegExp(`${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^<]*</a>[\\s\\S]{0,200}<h[34][^>]*>([^<]+)<`, 'i'))
+      || context.match(new RegExp(`<h[34][^>]*>[\\s\\S]*?<a[^>]*${id}[^>]*>([^<]+)`, 'i'));
+    const betterTitle = h4Match ? h4Match[1].trim() : title;
+
+    // Extract price
+    let priceText: string | null = null;
+    let priceAmount: number | null = null;
+    const priceMatch = context.match(/([\d\s]+)\s*kr/);
+    if (priceMatch) {
+      const cleaned = priceMatch[1].replace(/\s/g, '');
+      const num = parseInt(cleaned, 10);
+      if (num > 0 && num < 10000000) {
+        priceText = cleaned + ' kr';
+        priceAmount = num;
+      }
+    }
+
+    // Extract location (Swedish city names in the context)
+    let location = '';
+    const locMatch = context.match(/(?:Säljes|Köpes|Bytes)([A-ZÅÄÖ][a-zåäö]+(?:\s[A-ZÅÄÖ]?[a-zåäö]+)*)/);
+    if (locMatch) location = locMatch[1].trim();
+
+    // Extract category from category link
+    let category = 'other';
+    const catMatch = context.match(/href="\/?([\w-]+)-alla"/i)
+      || context.match(/\/([\w-]+)-alla/i);
+    if (catMatch) {
+      const catSlug = catMatch[1];
+      category = GEARLOOP_CATEGORY_MAP[catSlug] || 'other';
+    }
+
+    ads.push({
+      title: betterTitle,
+      ad_url: fullUrl,
+      category,
+      location,
+      date: new Date().toISOString().split('T')[0],
+      price_text: priceText,
+      price_amount: priceAmount,
+      image_url: imageUrl,
+      source_category: '',
+    });
+  }
+
+  return ads;
+}
+
+// Fetch a single page from Gearloop directly (no Firecrawl — server-rendered)
+async function fetchGearloopPage(page: number): Promise<Ad[]> {
   const url = page <= 1 ? 'https://gearloop.se/' : `https://gearloop.se/?page=${page}`;
-  console.log(`Gearloop: Fetching page ${page}: ${url}`);
 
   try {
-    const response = await fetch(FIRECRAWL_API_URL, {
-      method: 'POST',
+    const response = await fetch(url, {
       headers: {
-        'Authorization': `Bearer ${firecrawlApiKey}`,
-        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; Musikmarknaden/1.0; +https://musikmarknaden.com)',
+        'Accept': 'text/html',
       },
-      body: JSON.stringify({
-        url,
-        formats: ['markdown', 'html'],
-        onlyMainContent: false,
-        waitFor: 5000,
-      }),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Gearloop: Firecrawl error page ${page}: ${response.status} - ${errorText}`);
+      console.error(`Gearloop: HTTP ${response.status} for page ${page}`);
       return [];
     }
 
-    const data = await response.json();
-    const html = data.data?.html || data.html || '';
-    const markdown = data.data?.markdown || data.markdown || '';
+    const html = await response.text();
+    if (!html || html.length < 1000) return [];
 
-    if (!html && !markdown) {
-      console.warn(`Gearloop: No content for page ${page}`);
-      return [];
-    }
-
-    return parseGearloopAds(html, markdown);
+    return parseAdsFromGearloopHtml(html);
   } catch (error) {
     console.error(`Gearloop: Error fetching page ${page}:`, error);
     return [];
   }
+}
+
+/** Fetch multiple Gearloop pages in parallel (batch of N) */
+async function fetchGearloopPagesBatch(pages: number[]): Promise<{ page: number; ads: Ad[] }[]> {
+  const results = await Promise.allSettled(
+    pages.map(async (page) => {
+      const ads = await fetchGearloopPage(page);
+      return { page, ads };
+    })
+  );
+
+  return results
+    .filter((r): r is PromiseFulfilledResult<{ page: number; ads: Ad[] }> => r.status === 'fulfilled')
+    .map((r) => r.value);
 }
 
 // Fetch ad details using firecrawl-ad-details function
@@ -472,7 +570,6 @@ async function fetchAdDetails(supabaseUrl: string, adUrl: string): Promise<any> 
 }
 
 async function fetchAllAdsFromGearloop(
-  firecrawlApiKey: string,
   existingUrlSet: Set<string>,
   sourceName: string
 ): Promise<{ allAds: Ad[], newlyInsertedUrls: Set<string> }> {
@@ -480,55 +577,59 @@ async function fetchAllAdsFromGearloop(
   const seenUrls = new Set<string>();
   const newlyInsertedUrls = new Set<string>();
 
-  console.log(`Gearloop: Paginating main listing (gearloop.se/?page=N)...`);
+  console.log(`Gearloop: Paginating main listing (gearloop.se/?page=N) in parallel batches...`);
 
-  let page = 1;
-  let emptyPages = 0;
+  const BATCH_SIZE = 5; // Direct fetch is lightweight — can do 5 in parallel
+  let currentPage = 1;
+  let shouldStop = false;
+  let consecutiveEmpty = 0;
 
-  while (page <= MAX_GEARLOOP_PAGES) {
-    try {
-      const pageAds = await fetchGearloopPage(firecrawlApiKey, page);
+  while (currentPage <= MAX_GEARLOOP_PAGES && !shouldStop) {
+    // Build batch of page numbers
+    const pageBatch: number[] = [];
+    for (let i = 0; i < BATCH_SIZE && currentPage + i <= MAX_GEARLOOP_PAGES; i++) {
+      pageBatch.push(currentPage + i);
+    }
 
+    const batchResults = await fetchGearloopPagesBatch(pageBatch);
+
+    let totalNewInBatch = 0;
+    let emptyPagesInBatch = 0;
+
+    for (const { page, ads: pageAds } of batchResults) {
       if (pageAds.length === 0) {
-        emptyPages++;
-        if (emptyPages >= 2) {
-          console.log(`Gearloop: 2 consecutive empty pages at page ${page}, stopping.`);
-          break;
-        }
-        page++;
-        await delay(1000);
+        emptyPagesInBatch++;
+        consecutiveEmpty++;
         continue;
       }
 
-      emptyPages = 0;
-      let newOnPage = 0;
+      consecutiveEmpty = 0;
 
       for (const ad of pageAds) {
         if (!seenUrls.has(ad.ad_url)) {
           seenUrls.add(ad.ad_url);
           allAds.push(ad);
-          newOnPage++;
+          totalNewInBatch++;
           if (!existingUrlSet.has(ad.ad_url)) {
             newlyInsertedUrls.add(ad.ad_url);
           }
         }
       }
-
-      console.log(`Gearloop page ${page}: ${pageAds.length} ads (${newOnPage} new unique, total: ${allAds.length})`);
-
-      // If we got very few new ads, we're likely seeing repeats — stop
-      if (newOnPage === 0) {
-        console.log(`Gearloop: No new unique ads on page ${page}, stopping.`);
-        break;
-      }
-
-      page++;
-      await delay(1500); // Rate limit
-    } catch (error) {
-      console.error(`Gearloop: Error on page ${page}:`, error);
-      page++;
-      await delay(2000);
     }
+
+    console.log(`Gearloop p${pageBatch[0]}-${pageBatch[pageBatch.length - 1]}: +${totalNewInBatch} new (total: ${allAds.length})`);
+
+    // Stop if 3+ consecutive empty pages or no new unique ads in batch
+    if (consecutiveEmpty >= 3) {
+      console.log(`Gearloop: ${consecutiveEmpty} consecutive empty pages, stopping.`);
+      shouldStop = true;
+    } else if (totalNewInBatch === 0 && allAds.length > 50) {
+      console.log(`Gearloop: No new unique ads in batch, stopping.`);
+      shouldStop = true;
+    }
+
+    currentPage += BATCH_SIZE;
+    if (!shouldStop) await delay(500); // Brief pause between batches
   }
 
   console.log(`Total unique ads fetched: ${allAds.length}, New ads: ${newlyInsertedUrls.size}`);
@@ -741,7 +842,7 @@ async function runCleanupCategorization(
   return { categorized, failed };
 }
 
-async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?: string) {
+async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?: string, skipLog?: boolean) {
   const startTime = Date.now();
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
   
@@ -777,9 +878,9 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
     }
   }
 
-  // Create sync log entry at start
+  // Create sync log entry at start (skip if caller already manages the log)
   let syncLogId: string | null = null;
-  if (sourceId) {
+  if (sourceId && !skipLog) {
     const { data: syncLog, error: logError } = await supabase
       .from('sync_logs')
       .insert({
@@ -825,7 +926,6 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
     const existingUrlSet = new Set<string>(existingAds?.map((a: any) => a.ad_url) || []);
 
     const { allAds, newlyInsertedUrls } = await fetchAllAdsFromGearloop(
-      firecrawlApiKey,
       existingUrlSet,
       sourceName
     );
@@ -948,19 +1048,27 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
 
     console.log(`All ${validatedAds.length} ads saved, ${newlyInsertedUrls.size} are new`);
 
-    // Step 4: AI categorize new "other" ads
-    const aiNewResult = await aiCategorizeNewOtherAds(supabase, supabaseUrl, newlyInsertedUrls);
+    // Post-processing: only run if we have time left (skip heavy tasks to avoid timeout)
+    const elapsedSoFar = Math.round((Date.now() - startTime) / 1000);
+    const TIME_BUDGET_SECONDS = 120; // Conservative budget within Edge Function limits
+    const timeLeft = TIME_BUDGET_SECONDS - elapsedSoFar;
+    console.log(`Time elapsed: ${elapsedSoFar}s, time left for post-processing: ${timeLeft}s`);
 
-    // Step 5: Run cleanup categorization (process 20 existing "other" ads per sync)
-    const cleanupResult = await runCleanupCategorization(supabase, supabaseUrl, 20);
+    let aiCategorized = 0;
+    let detailsPreloaded = 0;
+    let imagesBackfilled = 0;
 
-    // Step 6: Preload ad details for new ads (up to 50 per sync to build cache faster)
-    const preloadResult = await preloadAdDetails(supabase, supabaseUrl, newlyInsertedUrls, 50);
-
-    // Step 7: Backfill images for any ads that are still missing them
-    const backfillResult = await backfillMissingImages(supabase, supabaseUrl, 40);
-
-    // NOTE: Description backfill now runs separately via backfill-descriptions function (hourly cron)
+    if (timeLeft > 30) {
+      // Only run lightweight post-processing if enough time remains
+      try {
+        const aiNewResult = await aiCategorizeNewOtherAds(supabase, supabaseUrl, newlyInsertedUrls);
+        aiCategorized = aiNewResult.categorized;
+      } catch (e) {
+        console.warn('Post-processing AI categorize skipped due to error:', e);
+      }
+    } else {
+      console.log('Skipping post-processing to avoid timeout');
+    }
 
     const duration = Math.round((Date.now() - startTime) / 1000);
 
@@ -994,9 +1102,9 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
       totalAds: validatedAds.length,
       newAds: newlyInsertedUrls.size,
       removedAds: removedCount,
-      aiCategorized: aiNewResult.categorized + cleanupResult.categorized,
-      detailsPreloaded: preloadResult.preloaded,
-      imagesBackfilled: backfillResult.backfilled,
+      aiCategorized,
+      detailsPreloaded,
+      imagesBackfilled,
       duration: `${duration}s`,
       total_ads_fetched: report.total,
       valid_ads: report.valid,
@@ -1055,9 +1163,10 @@ Deno.serve(async (req) => {
     // Get source_id from request body if provided
     const body = await req.json().catch(() => ({}));
     const sourceId = body.source_id;
+    const skipLog = body.skip_log === true;
 
     console.log('Starting ad sync with Firecrawl...');
-    const result = await syncAds(supabase, firecrawlApiKey, sourceId);
+    const result = await syncAds(supabase, firecrawlApiKey, sourceId, skipLog);
 
     console.log('Sync complete:', result);
     

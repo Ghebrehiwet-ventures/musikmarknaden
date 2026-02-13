@@ -331,7 +331,9 @@ function parseAdDetails(
   // Extract contact info - pass sourceType to avoid fabricated phone numbers
   const contactInfo = extractContactInfo(markdown, html, sourceType);
   const sellerInfo = sourceType === 'gearloop' ? extractSellerInfoFromHtml(html) : undefined;
-  const condition = extractCondition(markdown);
+  const condition = sourceType === 'gearloop'
+    ? extractGearloopConditionFromSidebar(html)
+    : extractCondition(markdown);
 
   return {
     title,
@@ -1405,41 +1407,47 @@ function extractImages(markdown: string, html: string, sourceType: string, adUrl
       images.push(baseUrl);
     }
   } else if (sourceType === 'gearloop') {
-    // Extract the article section only to avoid "related ads" images
+    const decodeUrl = (raw: string) => raw.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+    const addGearloop = (url: string) => {
+      const u = decodeUrl(url);
+      if (u.includes('assets.gearloop.se') && !images.includes(u)) images.push(u);
+    };
+
+    // Extract the article section first to avoid "related ads" images
     const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i);
     const articleHtml = articleMatch ? articleMatch[1] : '';
-    
+
     if (articleHtml) {
-      // 1. Get initial image from imageSlider() call
-      const sliderMatch = articleHtml.match(/imageSlider\(['"]([^'"]+)['"]\)/);
-      if (sliderMatch && sliderMatch[1].includes('assets.gearloop.se')) {
-        images.push(sliderMatch[1]);
-      }
-      
-      // 2. Get all data-image attributes (carousel thumbnails point to full images)
+      // 1. imageSlider('...') or imageSlider("...")
+      const sliderMatch = articleHtml.match(/imageSlider\s*\(\s*["']([^"']+)["']\s*\)/);
+      if (sliderMatch) addGearloop(sliderMatch[1]);
+
+      // 2. data-image attributes
       const dataImageRegex = /data-image=["']([^"']+)["']/gi;
       let match;
-      while ((match = dataImageRegex.exec(articleHtml)) !== null) {
-        const url = match[1];
-        if (url.includes('assets.gearloop.se') && !images.includes(url)) {
-          images.push(url);
-        }
-      }
-      
-      // 3. Check for background-image in style attributes within article
-      const bgImageRegex = /style="[^"]*background-image:\s*url\(['"]?([^'")\s]+)['"]?\)/gi;
-      while ((match = bgImageRegex.exec(articleHtml)) !== null) {
-        const url = match[1];
-        if (url.includes('assets.gearloop.se') && !images.includes(url)) {
-          images.push(url);
-        }
+      while ((match = dataImageRegex.exec(articleHtml)) !== null) addGearloop(match[1]);
+
+      // 3. background-image in style
+      const bgImageRegex = /background-image:\s*url\s*\(\s*["']?([^"')]+)["']?\s*\)/gi;
+      while ((match = bgImageRegex.exec(articleHtml)) !== null) addGearloop(match[1]);
+
+      // 4. <img src="..." or data-src="..." (lazy-loaded images)
+      const imgSrcRegex = /<img[^>]+(?:src|data-src)=["']([^"']+)["']/gi;
+      while ((match = imgSrcRegex.exec(articleHtml)) !== null) addGearloop(match[1]);
+    }
+
+    // 5. Fallback: og:image (main product image for sharing) – safe and usually correct
+    if (images.length === 0 && html) {
+      const ogMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+      if (ogMatch && ogMatch[1].includes('gearloop')) {
+        addGearloop(ogMatch[1]);
+        console.log('Gearloop: Using og:image fallback');
       }
     }
-    
-    // NO FALLBACK - if no images in article, ad has no images
-    // This prevents picking up images from "Mer från samma kategori" section
+
     if (images.length === 0) {
-      console.log('Gearloop: No images found in article - ad has no images');
+      console.log('Gearloop: No images found in article or og:image');
     }
   } else if (sourceType === 'dlxmusic') {
     // DLX Music: Extract ONLY from the main product gallery section
@@ -2665,6 +2673,19 @@ function extractSellerInfoFromHtml(html: string): { name?: string; username?: st
     }
   }
   
+  return undefined;
+}
+
+/** Gearloop: take condition only from the side menu (sidomeny), not from description text. */
+function extractGearloopConditionFromSidebar(html: string): string | undefined {
+  // Strip the main article so we don't pick up "Skick: Vintage-skick med..." from the body
+  const withoutArticle = html.replace(/<article[^>]*>[\s\S]*?<\/article>/gi, '');
+  const match = withoutArticle.match(/Skick:\s*([^\n<]+)/i);
+  const value = match ? match[1].trim() : undefined;
+  // Side menu values are short (e.g. "Bra", "Mycket bra skick"); ignore long text from elsewhere
+  if (value && value.length <= 80) {
+    return value;
+  }
   return undefined;
 }
 
