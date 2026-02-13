@@ -12,6 +12,7 @@ import { SourceFilter } from "@/components/SourceFilter";
 import { fetchAdListings, Ad } from "@/lib/api";
 import { usePrefetchAdDetails } from "@/hooks/usePrefetchAdDetails";
 import { SEOHead } from "@/components/SEOHead";
+import { Footer } from "@/components/Footer";
 import { generateHomeMetaTags, generateCategoryMetaTags } from "@/lib/seo";
 import { categoryMatchesFilter } from "@/lib/categories";
 
@@ -217,6 +218,7 @@ export default function Index() {
           </div>
         )}
       </main>
+      <Footer />
     </div>
     </>
   );

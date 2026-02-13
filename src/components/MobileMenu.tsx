@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Menu, ChevronRight, Guitar } from "lucide-react";
+import { Menu, ChevronRight, Music } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -53,7 +53,7 @@ export function MobileMenu({ onCategorySelect }: MobileMenuProps) {
       <SheetContent side="left" className="w-[300px] sm:w-[350px] p-0 flex flex-col h-full">
         <SheetHeader className="p-4 border-b border-border flex-shrink-0">
           <SheetTitle className="flex items-center gap-2 text-base">
-            <Guitar className="h-4 w-4" />
+            <Music className="h-4 w-4" />
             Musikmarknaden
           </SheetTitle>
         </SheetHeader>

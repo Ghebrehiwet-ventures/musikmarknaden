@@ -1,4 +1,4 @@
-import { Guitar } from "lucide-react";
+import { Music } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { MobileMenu } from "./MobileMenu";
 import { SearchDropdown } from "./SearchDropdown";
@@ -23,7 +23,7 @@ export function Header({ onCategorySelect, searchQuery = "", onSearch }: HeaderP
         <div className="flex items-center gap-3">
           <MobileMenu onCategorySelect={onCategorySelect} />
           <a href="/" className="flex items-center gap-2 font-semibold text-sm hover:text-muted-foreground transition-colors">
-            <Guitar className="h-5 w-5" />
+            <Music className="h-5 w-5" />
             <span className="hidden sm:inline">Musikmarknaden.com</span>
             <Badge variant="secondary" className="text-[10px] font-medium px-1.5 py-0 h-4 bg-amber-500/15 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400 border-amber-500/30">
               Beta

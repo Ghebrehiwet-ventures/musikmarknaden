@@ -8,12 +8,12 @@ import { useLocation } from 'react-router-dom';
  * Usage: Place in App.tsx inside BrowserRouter
  */
 export function ScrollToTop() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
 
   useEffect(() => {
-    // Scroll to top immediately on route change
+    // Scroll to top on route or query change (e.g. footer category links ?category=)
     window.scrollTo(0, 0);
-  }, [pathname]);
+  }, [pathname, search]);
 
   return null;
 }

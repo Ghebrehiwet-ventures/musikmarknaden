@@ -1,0 +1,20 @@
+---
+description: Footer och navigationslänkar ska alltid leda till toppen av sidan
+globs: src/components/Footer.tsx,**/Header*.tsx,**/ScrollToTop*
+alwaysApply: false
+---
+
+# Footer och navigationslänkar – scroll till toppen
+
+## Regel
+
+- **Alla interna länkar** (t.ex. i footer, header eller menyer) ska resultera i att användaren ser **toppen av målsidan**, inte kvar på tidigare scrollposition.
+- Det gäller både:
+  - Länkar som byter route (t.ex. `/` → `/ad/123`).
+  - Länkar som bara ändrar query (t.ex. `/?category=guitars-bass`). T.ex. kategorilänkar i footern måste trigga scroll till toppen.
+
+## Implementation
+
+- Använd eller behåll en **ScrollToTop**-komponent (eller motsvarande) som lyssnar på **både `pathname` och `search`** från `useLocation()`, och anropar `window.scrollTo(0, 0)` när någon av dem ändras.
+- Placera ScrollToTop inuti router (t.ex. BrowserRouter) så att den körs vid varje navigering.
+- När du lägger till nya footer-/navigationslänkar: se till att de använder React Routers `<Link to="...">` (eller `navigate()`) så att ScrollToTop triggas; undvik att bara uppdatera state utan URL-ändring om användaren förväntar sig att “länken leder till toppen”.

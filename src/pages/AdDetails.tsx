@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
 import { ImageLightbox, ZoomHint } from "@/components/ImageLightbox";
 import { getAdDetails, fetchAdListings, Ad } from "@/lib/api";
 import { CATEGORIES, mapToInternalCategory } from "@/lib/categories";
@@ -263,30 +264,30 @@ function SimilarAdsCarousel({ ads, currentAdUrl }: { ads: Ad[]; currentAdUrl: st
 
   return (
     <div className="relative">
-      {/* Navigation Buttons */}
+      {/* Navigation Buttons – primärfärg så de alltid syns oavsett bakgrund */}
       {canScrollLeft && (
         <button
           onClick={() => scroll('left')}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-card border-2 border-border text-foreground shadow-md flex items-center justify-center hover:bg-muted hover:border-muted-foreground/30 transition-colors -ml-5"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-20 h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-xl ring-2 ring-primary/50 flex items-center justify-center hover:opacity-90 transition-opacity -ml-2 lg:-ml-6"
           aria-label="Scrolla vänster"
         >
-          <ChevronLeft className="h-5 w-5" strokeWidth={2} />
+          <ChevronLeft className="h-6 w-6" strokeWidth={2.5} />
         </button>
       )}
       {canScrollRight && (
         <button
           onClick={() => scroll('right')}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-card border-2 border-border text-foreground shadow-md flex items-center justify-center hover:bg-muted hover:border-muted-foreground/30 transition-colors -mr-5"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-20 h-12 w-12 rounded-full bg-primary text-primary-foreground shadow-xl ring-2 ring-primary/50 flex items-center justify-center hover:opacity-90 transition-opacity -mr-2 lg:-mr-6"
           aria-label="Scrolla höger"
         >
-          <ChevronRight className="h-5 w-5" strokeWidth={2} />
+          <ChevronRight className="h-6 w-6" strokeWidth={2.5} />
         </button>
       )}
 
-      {/* Scrollable Container */}
+      {/* Scrollable Container – thin scrollbar so it's obvious you can scroll */}
       <div
         ref={scrollRef}
-        className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-4 px-4 lg:mx-0 lg:px-0"
+        className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 lg:mx-0 lg:px-0 scrollbar-visible"
         style={{ scrollSnapType: 'x mandatory' }}
       >
         {ads.map((ad) => (
@@ -884,7 +885,7 @@ export default function AdDetails() {
         {/* Similar Ads Section */}
         {similarAds.length > 0 && (
           <section className="mt-8 lg:mt-12 px-4 lg:px-0 overflow-hidden">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg lg:text-xl font-semibold">Du kanske också gillar</h2>
               {categoryInfo && (
                 <Link 
@@ -895,10 +896,13 @@ export default function AdDetails() {
                 </Link>
               )}
             </div>
+            <p className="text-sm text-muted-foreground mb-3">Scrolla eller använd pilarna för fler annonser.</p>
             <SimilarAdsCarousel ads={similarAds} currentAdUrl={ad.ad_url} />
           </section>
         )}
       </main>
+
+      <Footer />
 
       {/* Mobile Sticky CTA */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur border-t border-border lg:hidden safe-area-bottom">

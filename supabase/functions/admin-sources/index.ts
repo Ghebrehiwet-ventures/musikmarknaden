@@ -182,14 +182,19 @@ Deno.serve(async (req) => {
 
         if (sourceError) throw sourceError;
 
-        // Trigger the appropriate sync function based on source_type
+        // Trigger the appropriate sync function based on source_type / source identity
         try {
           let syncResult;
-          
+
           const isMusikborsen =
             (sourceData.name || '').toLowerCase().includes('musikbörsen') ||
             (sourceData.name || '').toLowerCase().includes('musikborsen') ||
             (sourceData.scrape_url || '').toLowerCase().includes('musikborsen.se');
+
+          const isGearloop =
+            (sourceData.name || '').toLowerCase().includes('gearloop') ||
+            (sourceData.base_url || '').toLowerCase().includes('gearloop.se') ||
+            (sourceData.scrape_url || '').toLowerCase().includes('gearloop.se');
 
           if (isMusikborsen) {
             const { data: scrapeData, error: scrapeError } = await adminClient.functions.invoke('scrape-musikborsen', {
@@ -198,12 +203,23 @@ Deno.serve(async (req) => {
 
             if (scrapeError) throw scrapeError;
             syncResult = scrapeData;
+          } else if (isGearloop) {
+            // Gearloop: use sync-ads (all categories + pagination), not scrape-source (single URL)
+            const { data: syncData, error: syncError } = await adminClient.functions.invoke('sync-ads', {
+              body: { source_id: sourceId }
+            });
+
+            if (syncError) throw syncError;
+            syncResult = syncData;
+            if (syncResult && typeof syncResult.totalAds === 'number' && syncResult.ads_found == null) {
+              syncResult.ads_found = syncResult.totalAds;
+            }
           } else if (sourceData.source_type === 'firecrawl_list') {
             // Call scrape-source function with dynamic URL from source config
             const { data: scrapeData, error: scrapeError } = await adminClient.functions.invoke('scrape-source', {
               body: { source_id: sourceId }
             });
-            
+
             if (scrapeError) throw scrapeError;
             syncResult = scrapeData;
           } else if (sourceData.source_type === 'parsebot') {

@@ -215,7 +215,7 @@ function extractImageUrlsFromHtml(rawHtml: string): Map<string, string> {
       }
     }
     
-    if (imageUrl && imageUrl.includes('assets.gearloop.se')) {
+    if (imageUrl && (imageUrl.includes('assets.gearloop.se') || imageUrl.includes('gearloop.se'))) {
       urlToImage.set(adUrl, imageUrl);
     }
   }
@@ -237,7 +237,21 @@ function extractImageUrlsFromHtml(rawHtml: string): Map<string, string> {
     }
     
     // Only add if not already found and is a valid image
-    if (!urlToImage.has(adUrl) && imageUrl && imageUrl.includes('assets.gearloop.se')) {
+    if (!urlToImage.has(adUrl) && imageUrl && (imageUrl.includes('assets.gearloop.se') || imageUrl.includes('gearloop.se'))) {
+      urlToImage.set(adUrl, imageUrl);
+    }
+  }
+
+  // Pattern 2b: img with data-src (lazy) before anchor
+  const reverseRegex2 = /<img[^>]+(?:data-src)=["']?([^"'\s>]+)["']?[^>]*>[\s\S]*?<a[^>]+href=["']?(https:\/\/gearloop\.se\/\d+[^"'\s>]+)["']?/gi;
+  while ((match = reverseRegex2.exec(html)) !== null) {
+    let imageUrl = cleanImageUrl(match[1]);
+    const adUrl = match[2].split('?')[0];
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      if (imageUrl.startsWith('//')) imageUrl = 'https:' + imageUrl;
+      else if (imageUrl.startsWith('/')) imageUrl = 'https://gearloop.se' + imageUrl;
+    }
+    if (!urlToImage.has(adUrl) && imageUrl && (imageUrl.includes('assets.gearloop.se') || imageUrl.includes('gearloop.se'))) {
       urlToImage.set(adUrl, imageUrl);
     }
   }
@@ -257,13 +271,29 @@ function extractImageUrlsFromHtml(rawHtml: string): Map<string, string> {
       }
     }
     
-    if (!urlToImage.has(adUrl) && imageUrl && imageUrl.includes('assets.gearloop.se')) {
+    if (!urlToImage.has(adUrl) && imageUrl && (imageUrl.includes('assets.gearloop.se') || imageUrl.includes('gearloop.se'))) {
       urlToImage.set(adUrl, imageUrl);
     }
   }
   
-  console.log(`Extracted ${urlToImage.size} image URLs from HTML`);
+  console.log(`Extracted ${urlToImage.size} image URLs from Gearloop HTML`);
   return urlToImage;
+}
+
+/** Extract all ad URLs from HTML (any href to gearloop.se/ID-slug). Used when card patterns miss links. */
+function extractAllAdUrlsFromHtml(html: string): Set<string> {
+  const urls = new Set<string>();
+  const fullUrlRegex = /href=["']?(https:\/\/gearloop\.se\/\d+-[^"'\s>]+)["']?/gi;
+  const relativeRegex = /href=["'](\/\d+-[^"'\s>]+)["']/gi;
+  let m;
+  while ((m = fullUrlRegex.exec(html)) !== null) {
+    urls.add(m[1].split('?')[0]);
+  }
+  while ((m = relativeRegex.exec(html)) !== null) {
+    urls.add(('https://gearloop.se' + m[1]).split('?')[0]);
+  }
+  console.log(`Extracted ${urls.size} ad URLs from Gearloop HTML (all links)`);
+  return urls;
 }
 
 // Parse ads from Gearloop markdown
@@ -312,46 +342,89 @@ function parseGearloopAds(
     });
   }
   
-  // Fallback: Also look for bare URLs with numeric prefix pattern
-  if (ads.length === 0) {
-    const urlRegex = /https:\/\/gearloop\.se\/(\d+)-([^)\s"]+)/g;
-    const seenUrls = new Set<string>();
-    
-    while ((match = urlRegex.exec(markdown)) !== null) {
-      const adUrl = match[0].split('?')[0];
-      if (!seenUrls.has(adUrl)) {
-        seenUrls.add(adUrl);
-        const slug = match[2];
-        const title = slug.replace(/-/g, ' ');
-        const imageUrl = imageMap.get(adUrl) || '';
-        
-        ads.push({
-          title,
-          ad_url: adUrl,
-          category: internalCategory,
-          location: '',
-          date: new Date().toISOString().split('T')[0],
-          price_text: null,
-          image_url: imageUrl,
-          source_category: sourceCategory,
-        });
-      }
-    }
+  // Fallback: Also look for bare URLs with numeric prefix pattern in markdown (always run to catch any we missed)
+  const urlRegex = /https:\/\/gearloop\.se\/(\d+)-([^)\s"]+)/g;
+  const seenFromMarkdown = new Set(ads.map((a) => a.ad_url));
+  while ((match = urlRegex.exec(markdown)) !== null) {
+    const adUrl = match[0].split('?')[0];
+    if (seenFromMarkdown.has(adUrl)) continue;
+    seenFromMarkdown.add(adUrl);
+    const slug = match[2];
+    const title = slug.replace(/-/g, ' ');
+    const imageUrl = imageMap.get(adUrl) || '';
+
+    ads.push({
+      title,
+      ad_url: adUrl,
+      category: internalCategory,
+      location: '',
+      date: new Date().toISOString().split('T')[0],
+      price_text: null,
+      image_url: imageUrl,
+      source_category: sourceCategory,
+    });
   }
-  
-  const withImages = ads.filter(a => a.image_url).length;
+
+  // Fallback: Ad URLs we found in HTML (cards/links) but not in markdown
+  const existingUrls = new Set(ads.map((a) => a.ad_url));
+  for (const [adUrl, imageUrl] of imageMap) {
+    const normalized = adUrl.split('?')[0];
+    if (existingUrls.has(normalized)) continue;
+    const slugMatch = normalized.match(/\/\d+-([^/]+)$/);
+    const title = slugMatch ? slugMatch[1].replace(/-/g, ' ') : normalized;
+
+    ads.push({
+      title,
+      ad_url: normalized,
+      category: internalCategory,
+      location: '',
+      date: new Date().toISOString().split('T')[0],
+      price_text: null,
+      image_url: imageUrl || '',
+      source_category: sourceCategory,
+    });
+    existingUrls.add(normalized);
+  }
+
+  // Fallback: ALL links to gearloop.se/ID-slug in HTML (even without image match) – Firecrawl may render cards differently
+  const allHtmlUrls = extractAllAdUrlsFromHtml(html);
+  for (const adUrl of allHtmlUrls) {
+    const normalized = adUrl.split('?')[0];
+    if (existingUrls.has(normalized)) continue;
+    const slugMatch = normalized.match(/\/\d+-([^/]+)$/);
+    const title = slugMatch ? slugMatch[1].replace(/-/g, ' ') : normalized;
+    const imageUrl = imageMap.get(normalized) || '';
+
+    ads.push({
+      title,
+      ad_url: normalized,
+      category: internalCategory,
+      location: '',
+      date: new Date().toISOString().split('T')[0],
+      price_text: null,
+      image_url: imageUrl,
+      source_category: sourceCategory,
+    });
+    existingUrls.add(normalized);
+  }
+
+  const withImages = ads.filter((a) => a.image_url).length;
   console.log(`Found ${ads.length} ads in category (${withImages} with images)`);
   return ads;
 }
 
+const MAX_GEARLOOP_PAGES_PER_CATEGORY = 15; // Paginate until empty or this many pages
+
 // Fetch ads from a single Gearloop category page using Firecrawl
 async function fetchCategoryWithFirecrawl(
-  firecrawlApiKey: string, 
-  category: { slug: string; internal: string }
+  firecrawlApiKey: string,
+  category: { slug: string; internal: string },
+  page: number = 1
 ): Promise<Ad[]> {
-  const url = `https://gearloop.se/kategori/${category.slug}`;
+  const base = `https://gearloop.se/kategori/${category.slug}`;
+  const url = page <= 1 ? base : `${base}?page=${page}`;
   console.log(`Fetching category: ${url}`);
-  
+
   try {
     const response = await fetch(FIRECRAWL_API_URL, {
       method: 'POST',
@@ -363,31 +436,31 @@ async function fetchCategoryWithFirecrawl(
         url,
         formats: ['markdown', 'html'],
         onlyMainContent: false, // Need full HTML to extract thumbnail images
-        waitFor: 3000,
+        waitFor: 5000, // Allow time for lazy-loaded cards to render
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Firecrawl error for ${category.slug}: ${response.status} - ${errorText}`);
+      console.error(`Firecrawl error for ${category.slug} page ${page}: ${response.status} - ${errorText}`);
       return [];
     }
 
     const data = await response.json();
     const html = data.data?.html || data.html || '';
     const markdown = data.data?.markdown || data.markdown || '';
-    
+
     if (!html && !markdown) {
-      console.warn(`No content for ${category.slug}`);
+      console.warn(`No content for ${category.slug} page ${page}`);
       return [];
     }
-    
+
     const ads = parseGearloopAds(html, markdown, category.internal, category.slug);
-    console.log(`${category.slug}: Found ${ads.length} ads`);
-    
+    console.log(`${category.slug} page ${page}: Found ${ads.length} ads`);
+
     return ads;
   } catch (error) {
-    console.error(`Error fetching ${category.slug}:`, error);
+    console.error(`Error fetching ${category.slug} page ${page}:`, error);
     return [];
   }
 }
@@ -422,29 +495,35 @@ async function fetchAllAdsFromGearloop(
   const seenUrls = new Set<string>();
   const newlyInsertedUrls = new Set<string>();
 
-  console.log(`Starting to fetch ads from ${GEARLOOP_CATEGORIES.length} categories using Firecrawl...`);
+  console.log(`Starting to fetch ads from ${GEARLOOP_CATEGORIES.length} categories using Firecrawl (with pagination)...`);
 
   for (const category of GEARLOOP_CATEGORIES) {
     try {
-      const categoryAds = await fetchCategoryWithFirecrawl(firecrawlApiKey, category);
-      
-      // Deduplicate
-      const newAdsInCategory: Ad[] = [];
-      for (const ad of categoryAds) {
-        if (!seenUrls.has(ad.ad_url)) {
-          seenUrls.add(ad.ad_url);
-          allAds.push(ad);
-          newAdsInCategory.push(ad);
-          
-          if (!existingUrlSet.has(ad.ad_url)) {
-            newlyInsertedUrls.add(ad.ad_url);
+      let page = 1;
+      let totalInCategory = 0;
+
+      while (page <= MAX_GEARLOOP_PAGES_PER_CATEGORY) {
+        const categoryAds = await fetchCategoryWithFirecrawl(firecrawlApiKey, category, page);
+
+        if (categoryAds.length === 0) break;
+
+        for (const ad of categoryAds) {
+          if (!seenUrls.has(ad.ad_url)) {
+            seenUrls.add(ad.ad_url);
+            allAds.push(ad);
+            totalInCategory++;
+            if (!existingUrlSet.has(ad.ad_url)) {
+              newlyInsertedUrls.add(ad.ad_url);
+            }
           }
         }
+
+        console.log(`${category.slug} page ${page}: ${categoryAds.length} ads (${totalInCategory} unique in category, total: ${allAds.length})`);
+        if (categoryAds.length < 10) break; // Likely last page
+        page++;
+        await delay(1000);
       }
-      
-      console.log(`${category.slug}: ${categoryAds.length} ads (${newAdsInCategory.length} unique, total: ${allAds.length})`);
-      
-      // Rate limiting - Firecrawl has limits
+
       await delay(1000);
     } catch (error) {
       console.error(`Error processing ${category.slug}:`, error);
@@ -908,6 +987,9 @@ async function syncAds(supabase: any, firecrawlApiKey: string, providedSourceId?
     
     return {
       success: true,
+      ads_found: validatedAds.length,
+      ads_new: newlyInsertedUrls.size,
+      ads_updated: 0,
       totalAds: validatedAds.length,
       newAds: newlyInsertedUrls.size,
       removedAds: removedCount,
