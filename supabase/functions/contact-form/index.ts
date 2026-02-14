@@ -62,6 +62,37 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Send email notification to hej@musikmarknaden.com via Resend
+    // Resend kräver verifierad domän för att skicka till andra – sätt RESEND_FROM till t.ex. "Kontakt <noreply@musikmarknaden.com>" efter domänverifiering
+    const resendKey = Deno.env.get("RESEND_API_KEY");
+    const fromEmail = Deno.env.get("RESEND_FROM") || "Kontakt Musikmarknaden <noreply@musikmarknaden.com>";
+    if (resendKey) {
+      const emailSubject = subject ? `Kontakt: ${subject}` : "Nytt meddelande från kontaktformuläret";
+      const emailBody = `Namn: ${name}\nE-post: ${email}\n${subject ? `Ämne: ${subject}\n` : ""}\nMeddelande:\n${message}`;
+      try {
+        const res = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${resendKey}`,
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: ["hej@musikmarknaden.com"],
+            subject: emailSubject,
+            text: emailBody,
+            reply_to: email,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          console.error("Resend error:", res.status, err);
+        }
+      } catch (e) {
+        console.error("Failed to send notification email:", e);
+      }
+    }
+
     return new Response(
       JSON.stringify({ success: true, message: "Tack! Vi återkommer så snart vi kan." }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

@@ -15,3 +15,15 @@ export function formatPrice(text: string | null | undefined, amount: number | nu
   if (text && /\d/.test(text)) return text;
   return 'Pris ej angivet';
 }
+
+/** Match ad against search query: every word in the query must appear in title, location or price_text. */
+export function adMatchesSearchQuery(
+  ad: { title: string; location?: string | null; price_text?: string | null },
+  searchQuery: string
+): boolean {
+  const q = searchQuery.toLowerCase().trim();
+  if (!q) return true;
+  const words = q.split(/\s+/).filter(Boolean);
+  const text = [ad.title, ad.location ?? '', ad.price_text ?? ''].join(' ').toLowerCase();
+  return words.every((word) => text.includes(word));
+}

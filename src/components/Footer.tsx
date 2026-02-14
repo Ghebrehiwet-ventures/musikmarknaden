@@ -1,5 +1,8 @@
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { CATEGORIES } from "@/lib/categories";
+import { fetchAdListings } from "@/lib/api";
+import { adMatchesSearchQuery } from "@/lib/utils";
 import { Music } from "lucide-react";
 
 const SOURCE_LINKS = [
@@ -28,6 +31,30 @@ const POPULAR_SEARCHES = [
 ];
 
 export function Footer() {
+  const { data } = useQuery({
+    queryKey: ["ads"],
+    queryFn: () => fetchAdListings(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const categoryCounts = (data?.ads || []).reduce(
+    (acc, ad) => {
+      const cat = ad.category || "other";
+      acc[cat] = (acc[cat] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>
+  );
+
+  const categoriesWithAds = CATEGORIES.filter(
+    (cat) => (categoryCounts[cat.id] || 0) > 0
+  );
+
+  const ads = data?.ads || [];
+  const popularWithHits = POPULAR_SEARCHES.filter(({ q }) =>
+    ads.some((ad) => adMatchesSearchQuery(ad, q))
+  );
+
   return (
     <footer className="border-t border-border mt-auto" role="contentinfo">
 
@@ -37,7 +64,7 @@ export function Footer() {
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground shrink-0">
             Populärt
           </span>
-          {POPULAR_SEARCHES.map(({ q, label }) => (
+          {popularWithHits.map(({ q, label }) => (
             <Link
               key={q}
               to={`/?q=${encodeURIComponent(q)}`}
@@ -75,7 +102,7 @@ export function Footer() {
               Kategorier
             </h3>
             <ul className="grid grid-cols-2 gap-x-8 gap-y-1.5">
-              {CATEGORIES.map((cat) => (
+              {categoriesWithAds.map((cat) => (
                 <li key={cat.id}>
                   <Link
                     to={`/?category=${cat.id}`}

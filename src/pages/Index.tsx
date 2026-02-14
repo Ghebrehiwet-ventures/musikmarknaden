@@ -15,14 +15,16 @@ import { SEOHead } from "@/components/SEOHead";
 import { Footer } from "@/components/Footer";
 import { generateHomeMetaTags, generateCategoryMetaTags } from "@/lib/seo";
 import { categoryMatchesFilter } from "@/lib/categories";
+import { adMatchesSearchQuery } from "@/lib/utils";
 
 export default function Index() {
   const [searchParams, setSearchParams] = useSearchParams();
   const categoryFromUrl = searchParams.get("category");
+  const qFromUrl = searchParams.get("q");
   
   const [selectedCategory, setSelectedCategory] = useState<string | null>(categoryFromUrl);
   const [currentPage, setCurrentPage] = useState(1);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(qFromUrl ?? "");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [sortOption, setSortOption] = useState<SortOption>("relevance");
   const [selectedSource, setSelectedSource] = useState<string | null>(null);
@@ -31,6 +33,14 @@ export default function Index() {
   useEffect(() => {
     setSelectedCategory(categoryFromUrl);
   }, [categoryFromUrl]);
+
+  // Sync search query from URL when user klickar på Populärt-taggarna (?q=...)
+  useEffect(() => {
+    if (qFromUrl != null) {
+      setSearchQuery(qFromUrl);
+      setCurrentPage(1);
+    }
+  }, [qFromUrl]);
   
   const { startHoverPrefetch, cancelHoverPrefetch } = usePrefetchAdDetails();
 
@@ -49,14 +59,8 @@ export default function Index() {
   const { availableSources, sourceCounts } = useMemo(() => {
     // First filter by category and search (but NOT source) to get accurate source counts
     const categoryFilteredAds = allAds.filter(ad => {
-      const searchLower = searchQuery.toLowerCase().trim();
-      const matchesSearchQuery = !searchLower || 
-        ad.title.toLowerCase().includes(searchLower) ||
-        ad.location.toLowerCase().includes(searchLower) ||
-        (ad.price_text?.toLowerCase().includes(searchLower));
-      
+      const matchesSearchQuery = adMatchesSearchQuery(ad, searchQuery);
       const matchesCat = categoryMatchesFilter(ad.category, selectedCategory);
-      
       return matchesSearchQuery && matchesCat;
     });
     
@@ -81,15 +85,9 @@ export default function Index() {
 
   const filteredAndSortedAds = useMemo(() => {
     const filtered = allAds.filter(ad => {
-      const searchLower = searchQuery.toLowerCase().trim();
-      const matchesSearchQuery = !searchLower || 
-        ad.title.toLowerCase().includes(searchLower) ||
-        ad.location.toLowerCase().includes(searchLower) ||
-        (ad.price_text?.toLowerCase().includes(searchLower));
-      
+      const matchesSearchQuery = adMatchesSearchQuery(ad, searchQuery);
       const matchesCat = categoryMatchesFilter(ad.category, selectedCategory);
       const matchesSource = !selectedSource || ad.source_name === selectedSource;
-      
       return matchesSearchQuery && matchesCat && matchesSource;
     });
 
